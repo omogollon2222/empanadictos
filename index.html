@@ -180,6 +180,14 @@ nav.tabs .pill{position:absolute;top:2px;right:calc(50% - 22px);background:var(-
 
 .frow{display:grid;grid-template-columns:1fr 84px 84px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
 .frow:last-child{border-bottom:0}
+.prow{display:grid;grid-template-columns:1fr 72px 72px;gap:8px;align-items:center;padding:10px 0 4px}
+.prow input{width:100%;border:2px solid var(--line);background:var(--surface2);border-radius:12px;padding:9px;font-weight:700;font-size:16px}
+.pmeta{display:flex;align-items:center;gap:8px;padding:0 0 10px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);font-weight:700}
+.pmeta .sw{width:14px;height:14px;border-radius:50%;flex:none}
+.pmeta button{margin-left:auto}
+.prow.off input{opacity:.55}
+.newprod{background:var(--surface2);border:2px dashed var(--line);border-radius:16px;padding:12px;margin-top:12px}
+.newprod select,.newprod input[type=color]{width:100%;border:2px solid var(--line);background:var(--surface);border-radius:12px;padding:8px;font-weight:700;font-size:16px;min-height:46px}
 .frow.head{font-size:12px;color:var(--muted);font-weight:800;border-bottom:2px solid var(--line)}
 .frow input,.inp{width:100%;border:2px solid var(--line);background:var(--surface2);border-radius:12px;padding:10px;font-weight:700;font-size:16px}
 .btn{border:2px solid var(--line);background:var(--surface);border-radius:14px;padding:12px 16px;font-weight:800}
@@ -374,16 +382,16 @@ const BASE_PRODUCTS=[
   {id:"aguasin",name:"Agua sin gas personal",c:"#5E9CC0",k:"beb"},
   {id:"aguacon",name:"Agua con gas personal",c:"#3F7597",k:"beb"}
 ];
-/* Productos: los de fábrica + los que agrega el administrador (config.extra). Los ocultos (config.hidden) no se venden pero conservan su historial. */
-let ALL_PRODUCTS=BASE_PRODUCTS.slice(), PRODUCTS=BASE_PRODUCTS.slice(), EMP=PRODUCTS.filter(p=>p.k==="emp"), BEB=PRODUCTS.filter(p=>p.k==="beb");
-function applyProducts(){const ex=Array.isArray(config.extra)?config.extra:[];const hid=config.hidden||[];
-  ALL_PRODUCTS=[...BASE_PRODUCTS,...ex.filter(x=>x&&x.id&&x.name)];PRODUCTS=ALL_PRODUCTS.filter(p=>!hid.includes(p.id));
-  EMP=PRODUCTS.filter(p=>p.k==="emp");BEB=PRODUCTS.filter(p=>p.k==="beb")}
+const BASE_IDS=new Set(BASE_PRODUCTS.map(p=>p.id));
+let PRODUCTS=BASE_PRODUCTS.map(p=>({...p})), VIS=[], EMP=[], BEB=[], OTR=[];
+// Todos los productos (incluidos los ocultos) sirven para el historial; VIS/EMP/BEB/OTR solo los visibles para vender.
+function setProducts(list){PRODUCTS=list;VIS=list.filter(p=>!p.hidden);EMP=VIS.filter(p=>p.k==="emp");BEB=VIS.filter(p=>p.k==="beb");OTR=VIS.filter(p=>p.k==="otro")}
+setProducts(PRODUCTS);
 const DEFAULT_CONFIG={
   prices:{ranchera:1.5,pork:1.75,hawaiana:1.5,queso:1.25,pollo:1.5,jamaica:1.5,limonada:1.5,coca:1.5,aguasin:1.5,aguacon:1.5},
   costs:{ranchera:.6,pork:.75,hawaiana:.6,queso:.45,pollo:.6,jamaica:.4,limonada:.35,coca:.8,aguasin:.5,aguacon:.6},
-  goal:80, staff:[{name:"Administrador",rol:"admin"}], cooks:["Cocinero 1","Cocinero 2"], target:8, stockMax:50,
-  mins:{ranchera:10,pork:10,hawaiana:10,queso:10,pollo:10,jamaica:6,limonada:6,coca:6,aguasin:6,aguacon:6}, alertPhone:"", alertHour:"15:00", comanda:true, extra:[], hidden:[]
+  goal:80, staff:[{name:"Administrador",rol:"admin"}], cooks:["Cocinero 1","Cocinero 2"], target:8, stockMax:50, products:BASE_PRODUCTS.map(p=>({...p})),
+  mins:{ranchera:10,pork:10,hawaiana:10,queso:10,pollo:10,jamaica:6,limonada:6,coca:6,aguasin:6,aguacon:6}, alertPhone:"", alertHour:"15:00", comanda:true
 };
 const LS="empanadictos_v2";
 let config=JSON.parse(JSON.stringify(DEFAULT_CONFIG));
@@ -391,6 +399,10 @@ let sales=[], cierres={}, inv={base:Object.fromEntries(PRODUCTS.map(p=>[p.id,50]
 let demo=false, demoSales=null;
 let tab="vender", period="hoy", cart={}, pay="efectivo", client="", cajaDay=null;
 let perdidas=[];
+// Lee montos escritos con coma o punto (teclados de celular en español)
+function numIn(v){v=String(v??"").replace(/[^\d.,-]/g,"");const i=Math.max(v.lastIndexOf(","),v.lastIndexOf("."));if(i>=0)v=v.slice(0,i).replace(/[.,]/g,"")+"."+v.slice(i+1).replace(/[.,]/g,"");const n=parseFloat(v);return isNaN(n)?NaN:n}
+const DEC_IDS=["fondo","contado","recv","goal"];let cajaDraft={};
+let addProd=false, xlsxFile=null;
 let cuentas=[], acct=null, charging=false, newAcct=false, received="", shareFile=null, askRes=null;
 let turnos=[], shiftId=null, demoShifts=null;
 let who=null, pendingRole=null, role=null, claves=null, clavesLoaded=false, loginRole="ventas", fails=0, lockUntil=0;
@@ -399,49 +411,12 @@ let db=null, dl=null, loaded=false, seenPending=null;
 let authNeeded=false, authUser=null, authBusy=false;
 
 /* ---------- Almacenamiento ---------- */
-function mergeCfg(c){c=c||{};return{prices:{...DEFAULT_CONFIG.prices,...(c.prices||{})},costs:{...DEFAULT_CONFIG.costs,...(c.costs||{})},goal:Number(c.goal)||DEFAULT_CONFIG.goal,cooks:Array.isArray(c.cooks)&&c.cooks.length?c.cooks:DEFAULT_CONFIG.cooks,staff:Array.isArray(c.staff)&&c.staff.length?c.staff:DEFAULT_CONFIG.staff,target:Number(c.target)||DEFAULT_CONFIG.target,stockMax:Number(c.stockMax)||50,mins:{...DEFAULT_CONFIG.mins,...(c.mins||{})},alertPhone:String(c.alertPhone||""),alertHour:typeof c.alertHour==="string"?c.alertHour:DEFAULT_CONFIG.alertHour,comanda:c.comanda!==false,resetAt:Number(c.resetAt)||0,extra:Array.isArray(c.extra)?c.extra:[],hidden:Array.isArray(c.hidden)?c.hidden:[]}}
+function mergeCfg(c){c=c||{};const r=mergeCfg0(c);r.products=Array.isArray(c.products)&&c.products.length?c.products.map(p=>({id:String(p.id),name:String(p.name||p.id),c:p.c||"#999999",k:["emp","beb","otro"].includes(p.k)?p.k:"otro",hidden:!!p.hidden})):BASE_PRODUCTS.map(p=>({...p}));setProducts(r.products);return r}
+function mergeCfg0(c){return{prices:{...DEFAULT_CONFIG.prices,...(c.prices||{})},costs:{...DEFAULT_CONFIG.costs,...(c.costs||{})},goal:Number(c.goal)||DEFAULT_CONFIG.goal,cooks:Array.isArray(c.cooks)&&c.cooks.length?c.cooks:DEFAULT_CONFIG.cooks,staff:Array.isArray(c.staff)&&c.staff.length?c.staff:DEFAULT_CONFIG.staff,target:Number(c.target)||DEFAULT_CONFIG.target,stockMax:Number(c.stockMax)||50,mins:{...DEFAULT_CONFIG.mins,...(c.mins||{})},alertPhone:String(c.alertPhone||""),alertHour:typeof c.alertHour==="string"?c.alertHour:DEFAULT_CONFIG.alertHour,comanda:c.comanda!==false}}
 function loadLocal(){try{const s=JSON.parse(localStorage.getItem(LS)||"null");if(s){config=mergeCfg(s.config);sales=s.sales||[];cierres=s.cierres||{};if(s.inv)inv=s.inv;if(s.claves)claves=s.claves;if(s.turnos)turnos=s.turnos;if(s.cuentas)cuentas=s.cuentas;if(s.perdidas)perdidas=s.perdidas;}}catch(e){}}
 function saveLocal(){if(db)return;try{localStorage.setItem(LS,JSON.stringify({config,sales,cierres,inv,claves,turnos,cuentas,perdidas}))}catch(e){}}
-loadLocal();applyProducts();
+loadLocal();
 window.addEventListener("storage",e=>{if(db||e.key!==LS)return;const pend=seenPending;loadLocal();if(acct&&!cuentas.some(c=>c.id===acct&&c.status==="abierta")){acct=null;charging=false}notifyNew();restoreSession();if(!(tab==="vender"&&document.activeElement&&document.activeElement.tagName==="INPUT"))render()});
-
-/* ---------- Ventas en la nube con copia en el dispositivo ----------
-   Cada dispositivo guarda una copia de TODAS las ventas (IndexedDB) y al abrir
-   solo descarga las ventas nuevas o cambiadas (campo u = última modificación).
-   La primera vez descarga todo una sola vez. Así se ahorran casi todas las lecturas. */
-let salesAll=new Map(), syncMeta={};
-const IDB_NAME="emp_cache_"+((window.FIREBASE_CONFIG&&window.FIREBASE_CONFIG.projectId)||"local");
-let idbP=null;
-function idbOpen(){return idbP||(idbP=new Promise((res,rej)=>{const r=indexedDB.open(IDB_NAME,1);
-  r.onupgradeneeded=()=>{const d=r.result;d.createObjectStore("ventas",{keyPath:"id"});d.createObjectStore("meta")};
-  r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}))}
-async function cacheLoad(){const d=await idbOpen();return new Promise((res,rej)=>{const t=d.transaction(["ventas","meta"]);const out={rows:[],meta:{}};
-  t.objectStore("ventas").getAll().onsuccess=e=>out.rows=e.target.result||[];t.objectStore("meta").get("m").onsuccess=e=>out.meta=e.target.result||{};
-  t.oncomplete=()=>res(out);t.onerror=()=>rej(t.error)})}
-async function cachePut(rows,meta,clear){const d=await idbOpen();return new Promise((res,rej)=>{const t=d.transaction(["ventas","meta"],"readwrite");const st=t.objectStore("ventas");
-  if(clear)st.clear();rows.forEach(r=>st.put(r));if(meta)t.objectStore("meta").put(meta,"m");t.oncomplete=res;t.onerror=()=>rej(t.error)})}
-async function cacheClear(){try{if(idbP)(await idbP).close()}catch(e){}idbP=null;await new Promise(r=>{try{const q=indexedDB.deleteDatabase(IDB_NAME);q.onsuccess=q.onerror=q.onblocked=()=>r()}catch(e){r()}})}
-function refreshSales(){const from=dayStart()-62*DAY;sales=[...salesAll.values()].filter(s=>s.t>=from).sort((a,b)=>b.t-a.t)}
-const allSalesList=()=>db?[...salesAll.values()]:sales;
-async function startSalesSync(){
-  let c={rows:[],meta:{}};try{c=await cacheLoad()}catch(e){}
-  salesAll=new Map(c.rows.map(r=>[r.id,r]));syncMeta=c.meta||{};
-  if(!syncMeta.full){ /* primera vez en este dispositivo: descarga todo una sola vez */
-    $("#sync").textContent="Descargando ventas…";
-    const snap=await db.collection("ventas").get();salesAll=new Map(snap.docs.map(x=>[x.id,{id:x.id,...x.data()}]));
-    syncMeta={full:Date.now(),last:Math.max(0,...[...salesAll.values()].map(v=>v.u||v.t||0))};
-    try{await cachePut([...salesAll.values()],syncMeta,true)}catch(e){}
-    $("#sync").textContent=authUser?"🔒 "+authUser.email:"Guardado en la nube";
-  }
-  refreshSales();loaded=true;notifyNew();render();
-  const since=Math.max(0,(syncMeta.last||0)-15*60000);
-  const apply=snap=>{const ch=[];
-    snap.docChanges().forEach(x=>{if(x.type==="removed")return;const v={id:x.doc.id,...x.doc.data()};salesAll.set(v.id,v);ch.push(v);syncMeta.last=Math.max(syncMeta.last||0,v.u||0)});
-    if(!ch.length)return;refreshSales();notifyNew();softRender();cachePut(ch,syncMeta).catch(()=>{})};
-  const fail=()=>{$("#sync").textContent="Sin conexión"};
-  db.collection("ventas").where("u",">=",since).onSnapshot(apply,fail);   /* solo lo nuevo o cambiado */
-  db.collection("ventas").where("t",">=",dayStart()).onSnapshot(apply,fail); /* respaldo: todo lo de hoy */
-}
 
 (async()=>{
   await new Promise(r=>setTimeout(r,0));
@@ -472,16 +447,16 @@ async function startSalesSync(){
     db=d; sales=[]; cierres={}; claves=null; turnos=[]; cuentas=[]; perdidas=[];
     db.doc("tienda/claves").onSnapshot(s=>{claves=s.exists?s.data():null;clavesLoaded=true;restoreSession();render()},()=>{clavesLoaded=true;render()});
     $("#sync").textContent=authUser?"🔒 "+authUser.email:"Guardado en la nube";
-    startSalesSync().catch(()=>{$("#sync").textContent="Sin conexión"});
-    db.doc("tienda/config").onSnapshot(s=>{if(s.exists){config=mergeCfg(s.data());
-      /* Si un administrador borró las ventas, este dispositivo descarta su copia y vuelve a descargar */
-      if(syncMeta.full&&config.resetAt>syncMeta.full){cacheClear().then(()=>location.reload());return}
-      softRender()}},()=>{});
-    db.doc("tienda/inventario").onSnapshot(s=>{if(s.exists){const v=s.data();inv={base:{...inv.base,...(v.base||{})},since:v.since||0};softRender()}},()=>{});
-    db.collection("perdidas").where("t",">=",dayStart()-62*DAY).orderBy("t","desc").onSnapshot(snap=>{perdidas=snap.docs.map(x=>({id:x.id,...x.data()}));if(role==="ventas"&&tab!=="vender")render()},()=>{});
-    db.collection("cuentas").where("tOpen",">=",dayStart()-62*DAY).orderBy("tOpen","desc").onSnapshot(snap=>{cuentas=snap.docs.map(x=>({id:x.id,...x.data()}));if(acct&&!cuentas.some(c=>c.id===acct&&c.status==="abierta")){acct=null;charging=false}if(role==="ventas")render()},()=>{});
-    db.collection("turnos").where("tIn",">=",dayStart()-62*DAY).orderBy("tIn","desc").onSnapshot(snap=>{turnos=snap.docs.map(x=>({id:x.id,...x.data()}));if(role&&(tab==="caja"||tab==="analisis"||tab==="cocina"))render()},()=>{});
-    db.collection("cierres").where("closedAt",">=",dayStart()-120*DAY).onSnapshot(snap=>{cierres={};snap.docs.forEach(x=>cierres[x.id]=x.data());if(tab==="caja")render()},()=>{});
+    db.collection("ventas").where("t",">=",dayStart()-62*DAY).orderBy("t","desc").onSnapshot(snap=>{
+      sales=snap.docs.map(x=>({id:x.id,...x.data()}));
+      notifyNew(); loaded=true; render();
+    },()=>{$("#sync").textContent="Sin conexión"});
+    db.doc("tienda/config").onSnapshot(s=>{if(s.exists){config=mergeCfg(s.data());render()}},()=>{});
+    db.doc("tienda/inventario").onSnapshot(s=>{if(s.exists){const v=s.data();inv={base:{...inv.base,...(v.base||{})},since:v.since||0};render()}},()=>{});
+    db.collection("perdidas").orderBy("t","desc").limit(1000).onSnapshot(snap=>{perdidas=snap.docs.map(x=>({id:x.id,...x.data()}));if(role==="ventas"&&tab!=="vender")render()},()=>{});
+    db.collection("cuentas").orderBy("tOpen","desc").limit(300).onSnapshot(snap=>{cuentas=snap.docs.map(x=>({id:x.id,...x.data()}));if(acct&&!cuentas.some(c=>c.id===acct&&c.status==="abierta")){acct=null;charging=false}if(role==="ventas")render()},()=>{});
+    db.collection("turnos").orderBy("tIn","desc").limit(500).onSnapshot(snap=>{turnos=snap.docs.map(x=>({id:x.id,...x.data()}));if(role&&(tab==="caja"||tab==="analisis"||tab==="cocina"))render()},()=>{});
+    db.collection("cierres").onSnapshot(snap=>{cierres={};snap.docs.forEach(x=>cierres[x.id]=x.data());if(tab==="caja")render()},()=>{});
   }catch(e){clavesLoaded=true;restoreSession();render()}
 })();
 
@@ -573,8 +548,8 @@ async function tryLogin(){
   else{fails++;$("#pin").value="";if(fails>=5){lockUntil=Date.now()+30000;fails=0;err.textContent="Demasiados intentos. Espera 30 segundos."}else err.textContent="Clave incorrecta"}
 }
 
-async function addSale(s){s.u=Date.now();if(db){await db.collection("ventas").add(s)}else{s.id="l"+Date.now()+Math.random().toString(36).slice(2,6);sales.unshift(s);saveLocal()}}
-async function patchSale(id,p){p={...p,u:Date.now()};if(db){await db.collection("ventas").doc(id).update(p)}else{const s=sales.find(x=>x.id===id);Object.assign(s,p);saveLocal()}}
+async function addSale(s){if(db){await db.collection("ventas").add(s)}else{s.id="l"+Date.now()+Math.random().toString(36).slice(2,6);sales.unshift(s);saveLocal()}}
+async function patchSale(id,p){if(db){await db.collection("ventas").doc(id).update(p)}else{const s=sales.find(x=>x.id===id);Object.assign(s,p);saveLocal()}}
 async function addCuenta(c){if(db){const r=await db.collection("cuentas").add(c);return r.id}c.id="c"+Date.now()+Math.random().toString(36).slice(2,5);cuentas.unshift(c);saveLocal();return c.id}
 async function patchCuenta(id,p){if(db){await db.collection("cuentas").doc(id).update(p)}else{const c=cuentas.find(x=>x.id===id);Object.assign(c,p);saveLocal()}}
 const isPaid=s=>s.paid!==false&&!s.void;
@@ -596,7 +571,8 @@ async function saveCierre(k,v){if(db)await db.doc("cierres/"+k).set(v);else{cier
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const money=n=>"$"+(Math.round((n||0)*100)/100).toFixed(2);
-const P=id=>ALL_PRODUCTS.find(p=>p.id===id)||{name:id,c:"#999",k:"emp"};
+const P=id=>PRODUCTS.find(p=>p.id===id)||{name:id,c:"#999",k:"emp"};
+const kindTxt=k=>k==="emp"?"Empanada":k==="beb"?"Bebida":"Otro";
 const empU=s=>Object.entries(s.items||{}).reduce((a,[f,q])=>a+(P(f).k==="emp"?q:0),0);
 const bebU=s=>Object.entries(s.items||{}).reduce((a,[f,q])=>a+(P(f).k==="beb"?q:0),0);
 const dayStart=(d=new Date())=>{const x=new Date(d);x.setHours(0,0,0,0);return x.getTime()};
@@ -612,9 +588,9 @@ function icon(p){return p.k==="emp"
 /* Inventario: stock = base - vendido desde "since" */
 const produced=s=>!(s.void&&!s.tStart);
 function soldSince(id){return sales.reduce((a,s)=>a+(s.t>=inv.since&&produced(s)?(s.items?.[id]||0):0),0)}
-function stock(id){return Math.max(0,(inv.base[id]??50)-soldSince(id))}
+function stock(id){return Math.max(0,(inv.base[id]??(BASE_IDS.has(id)?50:0))-soldSince(id))}
 const minOf=id=>Math.max(0,Number(config.mins?.[id]??10));
-const lowList=()=>PRODUCTS.map(p=>({...p,s:stock(p.id),m:minOf(p.id)})).filter(p=>p.s<=p.m);
+const lowList=()=>VIS.map(p=>({...p,s:stock(p.id),m:minOf(p.id)})).filter(p=>p.s<=p.m);
 function shortfalls(items){return Object.entries(items).filter(([id,q])=>q>stock(id)).map(([id,q])=>({id,q,s:stock(id)}))}
 function waLink(text){let d=String(config.alertPhone||"").replace(/\D/g,"");if(!d)return"";if(d.startsWith("0")&&d.length===10)d="593"+d.slice(1);return"https://wa.me/"+d+"?text="+encodeURIComponent(text)}
 function lowText(l){return"⚠️ Empanadictos: inventario bajo el mínimo\n"+l.map(p=>`• ${p.name}: quedan ${p.s} (mínimo ${p.m})`).join("\n")+"\n"+new Date().toLocaleString("es")}
@@ -765,10 +741,7 @@ function productionPlan(all){
 }
 
 /* ---------- Render ---------- */
-/* No redibujar Ajustes mientras el administrador escribe (llegan ventas de otros dispositivos) */
-function softRender(){const a=document.activeElement;if(tab==="ajustes"&&role&&((a&&a.closest&&a.closest("#app")&&/INPUT|SELECT|TEXTAREA/.test(a.tagName))||newProdOpen)){applyProducts();return}render()}
-document.addEventListener("toggle",e=>{if(e.target.matches&&e.target.matches("details")&&e.target.querySelector("#addProd"))newProdOpen=e.target.open},true);
-function render(){applyProducts();
+function render(){
   const lo=$("#logout");document.body.classList.toggle("kitchen",role==="cocina");
   if(authNeeded&&!authUser){$("#nav").hidden=true;$("#paybar").hidden=true;lo.hidden=true;renderAuth();return}
   if(role)checkLowAlerts();
@@ -786,7 +759,7 @@ function render(){applyProducts();
 
 function tileHTML(p){
   const q=cart[p.id]||0;const st=stock(p.id)-q;const out=st<=0;
-  return `<div class="cell"><button class="tile ${p.k==="beb"?"small":""} ${q?"on":""} ${out?"out":""}" style="--c:${p.c}" data-add="${p.id}" aria-label="Agregar ${p.name}">
+  return `<div class="cell"><button class="tile ${p.k!=="emp"?"small":""} ${q?"on":""} ${out?"out":""}" style="--c:${p.c}" data-add="${p.id}" aria-label="Agregar ${p.name}">
     ${icon(p)}
     <div><div class="name">${p.name}</div><div class="price">${money(config.prices[p.id])}</div>
     <div class="stock ${stock(p.id)<=minOf(p.id)?"low":""}">${stock(p.id)===0?"Agotada":out?"No quedan más":"Quedan "+st}</div></div>
@@ -815,7 +788,7 @@ function renderCharge(){
   const ords=acctOrders(c.id);const tot=acctTotal(c.id);const items={};
   ords.forEach(s=>Object.entries(s.items).forEach(([f,q])=>items[f]=(items[f]||0)+q));
   const inKitchen=ords.filter(s=>["pendiente","preparando","listo"].includes(s.status)).length;
-  const rec=parseFloat(received);const vuelto=rec-tot;
+  const rec=numIn(received);const vuelto=rec-tot;
   $("#app").innerHTML=`
     <h2>Cobrar cuenta: ${esc(c.name)}</h2>
     ${inKitchen?`<div class="warnbox"><b>${inKitchen} ${inKitchen===1?"pedido sigue":"pedidos siguen"} en cocina</b>Puedes cobrar igual; la cocina seguirá viéndolo hasta entregarlo.</div>`:""}
@@ -824,7 +797,7 @@ function renderCharge(){
       <tr><td><b>Total (${ords.length} ${ords.length===1?"ronda":"rondas"})</b></td><td></td><td class="r"><b style="font-size:20px">${money(tot)}</b></td></tr></tbody></table></div></div>
     <h3>Forma de pago</h3>
     <div class="bigseg"><button data-cpay="efectivo" aria-pressed="${pay==="efectivo"}">💵 Efectivo</button><button data-cpay="transferencia" aria-pressed="${pay==="transferencia"}">📲 Transferencia</button></div>
-    ${pay==="efectivo"?`<div class="card"><label class="f" for="recv">Recibido (opcional, para calcular el vuelto)</label><input class="inp" id="recv" type="number" step="0.01" min="0" inputmode="decimal" value="${esc(received)}" placeholder="0.00"><div id="vuelto" style="margin-top:8px">${received!==""&&!isNaN(rec)?(vuelto>=0?`<span class="m">Vuelto</span><div class="change">${money(vuelto)}</div>`:`<b class="down">Faltan ${money(-vuelto)}</b>`):""}</div></div>`:""}
+    ${pay==="efectivo"?`<div class="card"><label class="f" for="recv">Recibido (opcional, para calcular el vuelto)</label><input class="inp" id="recv" type="text" inputmode="decimal" autocomplete="off" value="${esc(received)}" placeholder="0.00"><div id="vuelto" style="margin-top:8px">${received!==""&&!isNaN(rec)?(vuelto>=0?`<span class="m">Vuelto</span><div class="change">${money(vuelto)}</div>`:`<b class="down">Faltan ${money(-vuelto)}</b>`):""}</div></div>`:""}
     <div class="stack"><button class="btn primary" style="font-size:18px;padding:16px" id="confirmPay">Confirmar pago de ${money(tot)}</button><button class="btn" id="backCharge">Volver a la cuenta</button></div>`;
 }
 function renderSell(){
@@ -844,6 +817,7 @@ function renderSell(){
     <div class="grid">${EMP.map(tileHTML).join("")}</div>
     <h2>Bebidas</h2>
     <div class="grid">${BEB.map(tileHTML).join("")}</div>
+    ${OTR.length?`<h2>Otros</h2><div class="grid">${OTR.map(tileHTML).join("")}</div>`:""}
     <div style="height:14px"></div>
     ${renderRecent()}`;
   renderPaybar();
@@ -902,7 +876,7 @@ function renderKitchen(){
 }
 
 /* Inventario */
-let showMins=false, newProdOpen=false;
+let showMins=false;
 function invCard(p,today,plan){const s=stock(p.id);const m=minOf(p.id);const cls=s===0?"zero":s<=m?"low":"ok";const pl=plan&&plan.find(x=>x.id===p.id);const avg=pl?pl.q/1.1:0;const lost=lostBy(dayStart(),Infinity)[p.id]||0;
   return `<div class="invc" style="--c:${p.c}">
     <div class="row"><div><div style="font-weight:800">${p.name}</div><div class="big">${s}</div><small class="m">mínimo ${m} · hoy vendidas ${today.by[p.id]||0}</small>${lost?`<br><span class="lost">🚫 ${lost} pedidos perdidos hoy por falta de stock</span>`:""}</div>
@@ -915,7 +889,7 @@ function invCard(p,today,plan){const s=stock(p.id);const m=minOf(p.id);const cls
 function minsPanel(){const perm="Notification" in window?Notification.permission:"na";
   return `<div class="card"><h3>⚙️ Mínimos y alertas</h3><p class="sub" style="margin:0 0 8px">Cuando un producto llega a su mínimo: se marca en rojo, se avisa en caja y se puede enviar un WhatsApp al administrador. Con inventario en 0 no se pueden tomar pedidos de ese producto.</p>
     <div class="minrow" style="font-weight:800;color:var(--muted);font-size:12px"><span>Producto</span><span>Mínimo</span><span>Hay</span></div>
-    ${PRODUCTS.map(p=>`<div class="minrow"><span style="font-weight:700">${p.name}</span><input class="inp" type="number" min="0" inputmode="numeric" data-min="${p.id}" value="${minOf(p.id)}" aria-label="Mínimo ${p.name}"><span>${stock(p.id)}</span></div>`).join("")}
+    ${VIS.map(p=>`<div class="minrow"><span style="font-weight:700">${p.name}</span><input class="inp" type="number" min="0" inputmode="numeric" data-min="${p.id}" value="${minOf(p.id)}" aria-label="Mínimo ${p.name}"><span>${stock(p.id)}</span></div>`).join("")}
     <div class="row2" style="margin-top:12px"><div><label class="f" for="alertPhone">WhatsApp del administrador</label><input class="inp" id="alertPhone" inputmode="tel" placeholder="Ej. 0991234567" value="${esc(config.alertPhone)}"></div>
     <div><label class="f" for="alertHour">Revisión diaria a las</label><input class="inp" id="alertHour" type="time" value="${esc(config.alertHour)}"></div></div>
     <p class="sub" style="margin:8px 0 0">A esa hora, la caja muestra un resumen de lo que está bajo el mínimo (una vez al día) con el botón para avisar por WhatsApp. Déjala vacía para no programarla.</p>
@@ -931,11 +905,12 @@ function renderInv(){
     ${lowBanner()}
     <h3>Empanadas</h3><div class="inv">${EMP.map(p=>invCard(p,today,plan)).join("")}</div>
     <h3 style="margin-top:16px">Bebidas</h3><div class="inv">${BEB.map(p=>invCard(p,today,null)).join("")}</div>
+    ${OTR.length?`<h3 style="margin-top:16px">Otros</h3><div class="inv">${OTR.map(p=>invCard(p,today,null)).join("")}</div>`:""}
     <div class="stack" style="margin-top:14px" ${isAdmin()?"":"hidden"}><button class="btn primary" id="refill">Reponer todo a ${config.stockMax} unidades</button></div>
     <p class="sub" style="margin-top:12px">"Sumar" agrega lo que acabas de hornear o comprar. "Ajustar" pone el número exacto que contaste.</p>`;
 }
 async function setStock(changes){
-  const base={};ALL_PRODUCTS.forEach(p=>base[p.id]=stock(p.id));Object.assign(base,changes);
+  const base={};PRODUCTS.forEach(p=>base[p.id]=stock(p.id));Object.assign(base,changes);
   inv={base,since:Date.now()};await saveInv();
 }
 
@@ -946,7 +921,7 @@ function renderCaja(){
   const key=dkey(cajaDay);const {list,st,k}=dayData(cajaDay);const c=cierres[key];
   const isToday=cajaDay===dayStart();
   const dateTxt=new Date(cajaDay).toLocaleDateString("es",{weekday:"long",day:"numeric",month:"long"});
-  const fondo=c?c.fondo:"",contado=c?c.contado:"";
+  const dr=cajaDraft[key]||{};const fondo=c&&dr.fondo===undefined?c.fondo:(dr.fondo??""),contado=c&&dr.contado===undefined?c.contado:(dr.contado??"");
   const hist=Object.entries(cierres).sort((a,b)=>b[0]<a[0]?-1:1).slice(0,10);
   $("#app").innerHTML=`
     <h2>Cierre de caja</h2>
@@ -961,8 +936,8 @@ function renderCaja(){
     <div class="card ${c?"closed":""}">
       <h3>${c?"✅ Caja cerrada a las "+new Date(c.closedAt).toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"})+(c.closedBy?" por "+esc(c.closedBy):""):"Contar el efectivo"}</h3>
       <div class="row2">
-        <div><label class="f" for="fondo">Fondo inicial (cambio)</label><input class="inp" id="fondo" type="number" step="0.01" min="0" inputmode="decimal" value="${fondo}" placeholder="0.00"></div>
-        <div><label class="f" for="contado">Efectivo contado</label><input class="inp" id="contado" type="number" step="0.01" min="0" inputmode="decimal" value="${contado}" placeholder="0.00"></div>
+        <div><label class="f" for="fondo">Fondo inicial (cambio)</label><input class="inp" id="fondo" type="text" inputmode="decimal" autocomplete="off" value="${fondo}" placeholder="0.00"></div>
+        <div><label class="f" for="contado">Efectivo contado</label><input class="inp" id="contado" type="text" inputmode="decimal" autocomplete="off" value="${contado}" placeholder="0.00"></div>
       </div>
       <div style="margin-top:12px" id="cuadre"></div>
       <div class="stack" style="margin-top:12px"><button class="btn primary" id="cerrar">${c?"Actualizar cierre":"Cerrar caja"}</button></div>
@@ -988,10 +963,10 @@ function renderCaja(){
 }
 function updateCuadre(){
   const el=$("#cuadre");if(!el)return;const {st}=dayData(cajaDay);
-  const f=parseFloat($("#fondo").value)||0, c=$("#contado").value;
+  const f=numIn($("#fondo").value)||0, c=$("#contado").value.trim();
   const esperado=f+st.cash;
   if(c===""){el.innerHTML=`<p style="margin:0;font-size:14px">Debe haber en caja: <b>${money(esperado)}</b> (fondo ${money(f)} + ventas en efectivo ${money(st.cash)}).</p>`;return}
-  const d=(parseFloat(c)||0)-esperado;const ok=Math.abs(d)<.01;
+  const d=(numIn(c)||0)-esperado;const ok=Math.abs(d)<.01;
   el.innerHTML=`<div style="font-size:14px">Esperado: <b>${money(esperado)}</b></div>
     <div class="diff ${ok?"up":"down"}">${ok?"Caja cuadrada":d>0?"Sobran "+money(d):"Faltan "+money(-d)}</div>`;
 }
@@ -1143,52 +1118,10 @@ function lastBackupTxt(){let t=0;try{t=Number(localStorage.getItem("emp_lastback
 async function allDocs(col,local){
   if(!db)return local;
   const snap=await db.collection(col).get();return snap.docs.map(x=>({id:x.id,...x.data()}))}
-async function xlsxLib(){if(window.XLSX)return;try{await loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js")}catch(e){await loadScript("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js")}}
-/* Un solo archivo Excel (Ventas, Resumen por día, Inventario) para guardar en Google Drive */
-async function driveExport(btn){
-  btn.disabled=true;const old=btn.textContent;btn.textContent="Preparando archivo…";
-  try{
-    await xlsxLib();
-    const ventas=allSalesList().slice().sort((a,b)=>a.t-b.t);
-    const r2=v=>Math.round((v||0)*100)/100;
-    const hora=t=>new Date(t).toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"});
-    const estado=v=>v.void?"Anulado":v.paid===false?"Por cobrar":"Pagado";
-    const vRows=ventas.map(v=>({"Fecha":dkey(v.t),"Hora":hora(v.t),"Pedido":v.num||"","Cliente o mesa":v.client||"",
-      "Productos":Object.entries(v.items||{}).map(([f,c])=>c+" "+P(f).name).join(", "),
-      ...Object.fromEntries(ALL_PRODUCTS.filter(p=>PRODUCTS.includes(p)||ventas.some(x=>(x.items||{})[p.id])).map(p=>[p.name,(v.items||{})[p.id]||0])),
-      "Empanadas":empU(v),"Bebidas":bebU(v),"Total":r2(v.total),"Pago":v.pay||"","Estado":estado(v),
-      "Cobró":v.paidBy||v.cashier||"","Cocinero":v.cook||"","Motivo anulación":v.voidReason||""}));
-    const days={};ventas.forEach(v=>{const k=dkey(v.paid===false?v.t:payT(v));const d=days[k]||(days[k]={"Fecha":k,"Pedidos":0,"Empanadas":0,"Bebidas":0,"Efectivo":0,"Transferencia":0,"Total vendido":0,"Costo":0,"Ganancia":0,"Anulados":0,"Por cobrar":0});
-      if(v.void){d["Anulados"]+=r2(v.total);return}if(v.paid===false){d["Por cobrar"]+=r2(v.total);return}
-      const cost=Object.entries(v.items||{}).reduce((a,[f,q])=>a+q*(config.costs[f]||0),0);
-      d["Pedidos"]++;d["Empanadas"]+=empU(v);d["Bebidas"]+=bebU(v);d[v.pay==="efectivo"?"Efectivo":"Transferencia"]+=v.total;d["Total vendido"]+=v.total;d["Costo"]+=cost});
-    const dRows=Object.values(days).sort((a,b)=>a.Fecha<b.Fecha?-1:1).map(d=>{d["Ganancia"]=d["Total vendido"]-d["Costo"];for(const k in d)if(typeof d[k]==="number"&&k!=="Pedidos")d[k]=r2(d[k]);return d});
-    const hoy=stats(sales.filter(s=>s.t>=dayStart()&&!s.void));
-    const iRows=PRODUCTS.map(p=>{const st=stock(p.id),m=minOf(p.id);return{"Producto":p.name,"Tipo":p.k==="emp"?"Empanada":"Bebida","Existencia":st,"Mínimo":m,
-      "Estado":st===0?"Agotado":st<=m?"Bajo el mínimo":"Bien","Vendidas hoy":hoy.by[p.id]||0,"Precio":config.prices[p.id],"Costo":config.costs[p.id],"Valor en inventario (costo)":r2(st*(config.costs[p.id]||0))}});
-    const wb=XLSX.utils.book_new();
-    const add=(rows,name,widths)=>{const ws=XLSX.utils.json_to_sheet(rows.length?rows:[{"Sin datos":""}]);ws["!cols"]=widths.map(w=>({wch:w}));XLSX.utils.book_append_sheet(wb,ws,name)};
-    add(vRows,"Ventas",[11,7,7,16,40,...ALL_PRODUCTS.map(()=>9),10,8,8,13,11,12,12,22]);
-    add(dRows,"Resumen por día",[11,8,10,8,10,13,13,9,10,9,10]);
-    add(iRows,"Inventario",[16,10,10,8,15,12,8,8,24]);
-    const stamp=dkey(Date.now());const name=`Empanadictos ventas e inventario ${stamp}.xlsx`;
-    const mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-    const blob=new Blob([XLSX.write(wb,{bookType:"xlsx",type:"array"})],{type:mime});
-    let shared=false;
-    try{const file=new File([blob],name,{type:mime});
-      if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:name});shared=true}}
-    catch(e){if(e&&e.name==="AbortError"){btn.disabled=false;btn.textContent=old;return}}
-    if(!shared){await download(name,blob,mime);toast("Archivo descargado. Súbelo a drive.google.com (Nuevo → Subir archivo).")}
-    else toast("Listo: elige Drive para guardarlo");
-    try{localStorage.setItem("emp_lastbackup",String(Date.now()))}catch(e){}
-    if(tab==="ajustes")render();
-  }catch(e){toast("No se pudo crear el archivo. Revisa tu conexión e intenta de nuevo.",true)}
-  btn.disabled=false;btn.textContent=old;
-}
 async function makeBackup(kind,btn){
   btn.disabled=true;const old=btn.textContent;btn.textContent="Preparando…";
   try{
-    const ventas=allSalesList().slice().sort((a,b)=>a.t-b.t);
+    const ventas=(await allDocs("ventas",sales)).sort((a,b)=>a.t-b.t);
     const stamp=dkey(Date.now());
     if(kind==="json"){
       const [cu,tu,pe,ci]=await Promise.all([allDocs("cuentas",cuentas),allDocs("turnos",turnos),allDocs("perdidas",perdidas),db?allDocs("cierres",[]):Object.entries(cierres).map(([id,v])=>({id,...v}))]);
@@ -1208,6 +1141,40 @@ async function makeBackup(kind,btn){
     toast(`Respaldo listo: ${ventas.length} ventas`);if(tab==="ajustes")render();
   }catch(e){toast("No se pudo crear el respaldo",true)}
   btn.disabled=false;btn.textContent=old;
+}
+function loadXLSX(){if(window.XLSX)return Promise.resolve(window.XLSX);return new Promise((res,rej)=>{const sc=document.createElement("script");sc.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";sc.onload=()=>window.XLSX?res(window.XLSX):rej(new Error("xlsx"));sc.onerror=()=>rej(new Error("xlsx"));document.head.appendChild(sc)})}
+function resetXlsxBtn(btn){xlsxFile=null;if(btn){btn.textContent="💾 Respaldo en Excel";btn.classList.remove("dark")}}
+async function makeXlsx(btn){
+  if(xlsxFile){const f=xlsxFile;try{await navigator.share({files:[f],title:f.name});try{localStorage.setItem("emp_lastbackup",String(Date.now()))}catch(e){}toast("Respaldo enviado")}catch(e){if(e&&e.name==="AbortError")return;await download(f.name,f,f.type)}resetXlsxBtn(btn);if(tab==="ajustes")render();return}
+  btn.disabled=true;const old=btn.textContent;btn.textContent="Preparando…";
+  try{
+    const X=await loadXLSX();
+    const ventas=(await allDocs("ventas",sales)).sort((a,b)=>a.t-b.t);
+    const ci=db?await allDocs("cierres",[]):Object.entries(cierres).map(([id,v])=>({id,...v}));const cmap={};ci.forEach(c=>cmap[c.fecha||c.id]=c);
+    const r2=v=>Math.round((v||0)*100)/100;
+    const estado=v=>v.void?"Anulado":v.paid===false?"Por cobrar":({pendiente:"En cocina",preparando:"Preparando",listo:"Listo",entregado:"Entregado"}[v.status]||v.status||"");
+    const hojaV=[["Fecha","Hora","Pedido","Cliente / cuenta","Productos","Empanadas","Bebidas y otros","Total $","Pago","Cajero","Cocinero","Estado"]];
+    ventas.forEach(v=>{const items=Object.entries(v.items||{});hojaV.push([dkey(v.t),hm(v.t),v.num||"",v.client||v.cliente||"",items.map(([f,c])=>c+" "+P(f).name).join(", "),empU(v),items.reduce((a,[f,c])=>a+(P(f).k!=="emp"?c:0),0),r2(v.total),v.void?"":(v.pay==="efectivo"?"Efectivo":v.pay==="transferencia"?"Transferencia":v.pay||""),v.paidBy||v.cashier||"",v.cook||"",estado(v)])});
+    const days={};ventas.filter(isPaid).forEach(v=>{(days[dkey(payT(v))]=days[dkey(payT(v))]||[]).push(v)});
+    ventas.filter(v=>v.void).forEach(v=>{const k=dkey(v.t);days[k]=days[k]||[];(days[k].anul=(days[k].anul||0)+1)});
+    Object.keys(cmap).forEach(k=>days[k]=days[k]||[]);
+    const hojaR=[["Fecha","Pedidos","Empanadas","Bebidas y otros","Ventas $","Efectivo $","Transferencias $","Ganancia estimada $","Anulados","Cierre de caja","Diferencia de caja $"]];
+    Object.keys(days).sort().forEach(k=>{const l=days[k],st=stats(l),c=cmap[k];hojaR.push([k,st.tickets,st.u,st.b,r2(st.rev),r2(st.cash),r2(st.rev-st.cash),r2(st.profit),l.anul||0,c?"Cerrada":"Sin cierre",c?r2(c.diferencia):""])});
+    const hojaI=[["Producto","Tipo","Estado","Quedan","Mínimo","Precio $","Costo $","Margen $","Margen %"]];
+    PRODUCTS.forEach(p=>{const pr=config.prices[p.id]||0,co=config.costs[p.id]||0;hojaI.push([p.name,kindTxt(p.k),p.hidden?"Oculto":"A la venta",stock(p.id),minOf(p.id),r2(pr),r2(co),r2(pr-co),pr?Math.round((pr-co)/pr*100):0])});
+    const wb=X.utils.book_new();
+    const add=(rows,name,cols)=>{const ws=X.utils.aoa_to_sheet(rows);ws["!cols"]=cols.map(w=>({wch:w}));ws["!autofilter"]={ref:ws["!ref"]};X.utils.book_append_sheet(wb,ws,name)};
+    add(hojaV,"Ventas",[11,7,7,16,40,10,12,9,13,14,14,11]);
+    add(hojaR,"Resumen por día",[11,9,10,12,10,11,14,16,9,13,16]);
+    add(hojaI,"Inventario",[24,10,11,8,8,9,9,9,9]);
+    const name=`Empanadictos-respaldo-${dkey(Date.now())}.xlsx`,mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    const file=new File([X.write(wb,{bookType:"xlsx",type:"array"})],name,{type:mime});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){xlsxFile=file;btn.disabled=false;btn.textContent="Toca otra vez para enviar a Drive";btn.classList.add("dark");return}
+    await download(name,file,mime);
+    try{localStorage.setItem("emp_lastbackup",String(Date.now()))}catch(e){}
+    toast(`Respaldo listo: ${ventas.length} ventas`);if(tab==="ajustes")render();
+  }catch(e){toast(e&&e.message==="xlsx"?"Se necesita internet para crear el Excel":"No se pudo crear el respaldo",true);btn.textContent=old}
+  btn.disabled=false;
 }
 async function download(filename,content,mime){
   if(dl){try{await dl.save({filename,data:content});return}catch(e){if(e&&e.code==="declined")return;toast("No se pudo descargar",true);return}}
@@ -1270,26 +1237,24 @@ function renderAnalysis(){
 function renderSettings(){
   $("#app").innerHTML=`
     <h2>Ajustes</h2>
-    <div class="card"><h3>💾 Respaldo en Excel</h3><p class="sub" style="margin:0 0 10px">Descarga <b>un solo archivo Excel</b> con tres hojas: <b>Ventas</b> (todas, con detalle por producto), <b>Resumen por día</b> e <b>Inventario</b>. En el celular se abre el menú de compartir: elige <b>Drive</b>. En computadora se descarga para subirlo a Drive. Hazlo al menos una vez por semana.<br><b>Último respaldo en este dispositivo:</b> ${lastBackupTxt()}</p>
-      <button class="btn primary" style="width:100%" id="driveXls">📁 Guardar ventas e inventario (Excel)</button>
-      <details style="margin-top:12px"><summary class="sub" style="cursor:pointer">Copia técnica para restaurar la app</summary><p class="sub" style="margin:8px 0">Archivo .json con todo (cuentas, turnos, cierres, configuración). No se abre en Excel: solo sirve para recuperar la app si algo falla.</p>
-      <button class="btn" style="width:100%" id="bkJson">Descargar copia técnica (.json)</button>${db?"":`<label class="btn" style="display:block;text-align:center;cursor:pointer;margin-top:10px">Restaurar un respaldo<input type="file" id="restore" accept=".json,application/json" hidden></label>`}</details></div>
+    <div class="card"><h3>💾 Respaldo en Excel</h3><p class="sub" style="margin:0 0 10px">Hazlo al cerrar cada día o al menos una vez por semana y guárdalo en Drive.<br><b>Último respaldo en este dispositivo:</b> ${lastBackupTxt()}</p>
+      <button class="btn primary" style="width:100%" id="bkXlsx">💾 Respaldo en Excel</button><p class="sub" style="margin:8px 0 10px">Un solo archivo con 3 hojas: Ventas (desde el primer día), Resumen por día e Inventario. En el celular elige <b>Drive</b> al compartir.</p><button class="btn sm" style="width:100%" id="bkJson">Copia técnica (.json, solo para restaurar la app)</button>${db?"":`<label class="btn" style="display:block;text-align:center;cursor:pointer;margin-top:10px">Restaurar un respaldo<input type="file" id="restore" accept=".json,application/json" hidden></label>`}</div>
     ${authUser?`<div class="card"><h3>🔒 Seguridad</h3><p class="sub" style="margin:0 0 10px">Este dispositivo está conectado como <b>${esc(authUser.email)}</b>. Si pierdes o cambias un dispositivo, cambia la contraseña en Firebase.</p><button class="btn danger" id="authOut">Cerrar sesión de este dispositivo</button></div>`:""}
-    <div class="card"><h3>🥟 Productos</h3><p class="sub" style="margin:0 0 10px">Agrega productos nuevos u oculta los que ya no vendes (su historial se conserva). Las empanadas van a Cocina; las bebidas y otros no.</p>
-      <div class="list" style="margin-bottom:12px">${ALL_PRODUCTS.map(p=>{const off=config.hidden.includes(p.id);return `<div class="sale" style="align-items:center"><span class="what" style="${off?"opacity:.5":""}"><b style="color:${p.c}">●</b> <b>${esc(p.name)}</b><br><small class="m">${p.k==="emp"?"Empanada":"Bebida u otro"} · ${money(config.prices[p.id]||0)}${off?" · oculto":""}</small></span><button class="btn sm ${off?"primary":""}" data-phide="${p.id}">${off?"Mostrar":"Ocultar"}</button></div>`}).join("")}</div>
-      <details ${newProdOpen?"open":""}><summary class="btn" style="display:block;text-align:center;cursor:pointer;list-style:none">+ Agregar producto</summary>
-        <div style="margin-top:12px"><label class="f" for="npName">Nombre</label><input class="inp" id="npName" maxlength="30" placeholder="Ej. Empanada de carne" autocomplete="off">
-        <label class="f" for="npKind" style="margin-top:10px">Tipo</label><select class="inp" id="npKind"><option value="emp">Empanada (va a cocina)</option><option value="beb">Bebida u otro (no va a cocina)</option></select>
-        <div class="row2" style="margin-top:10px"><div><label class="f" for="npPrice">Precio $</label><input class="inp" id="npPrice" type="number" step="0.05" min="0" inputmode="decimal" placeholder="1.50"></div>
-        <div><label class="f" for="npCost">Costo $</label><input class="inp" id="npCost" type="number" step="0.05" min="0" inputmode="decimal" placeholder="0.60"></div></div>
-        <div class="row2" style="margin-top:10px"><div><label class="f" for="npStock">Cantidad inicial</label><input class="inp" id="npStock" type="number" min="0" inputmode="numeric" placeholder="0"></div>
-        <div><label class="f" for="npColor">Color</label><input class="inp" id="npColor" type="color" value="#C2410C" style="height:48px;padding:4px"></div></div>
-        <button class="btn primary" style="width:100%;margin-top:12px" id="addProd">Agregar producto</button></div></details></div>
-    <div class="card"><h3>Precios y costos</h3><p class="sub" style="margin:0 0 6px">El costo sirve para calcular la ganancia estimada.</p>
-      <div class="frow head"><span>Producto</span><span>Precio $</span><span>Costo $</span></div>
-      ${PRODUCTS.map(f=>`<div class="frow"><span style="font-weight:700">${f.name}</span>
-        <input type="number" step="0.05" min="0" inputmode="decimal" data-price="${f.id}" value="${config.prices[f.id]}" aria-label="Precio ${f.name}">
-        <input type="number" step="0.05" min="0" inputmode="decimal" data-cost="${f.id}" value="${config.costs[f.id]}" aria-label="Costo ${f.name}"></div>`).join("")}
+    <div class="card" id="prodCard"><h3>🥟 Productos</h3><p class="sub" style="margin:0 0 6px">Cambia nombre, precio y costo, y toca <b>Guardar ajustes</b> abajo. Las empanadas van a cocina; bebidas y otros no. <b>Ocultar</b> quita el producto de la venta sin borrar su historial.</p>
+      <div class="frow head" style="grid-template-columns:1fr 72px 72px"><span>Producto</span><span>Precio $</span><span>Costo $</span></div>
+      ${PRODUCTS.map(f=>`<div class="prow ${f.hidden?"off":""}"><input type="text" data-pname="${f.id}" value="${esc(f.name)}" maxlength="40" aria-label="Nombre ${esc(f.name)}">
+        <input type="text" inputmode="decimal" autocomplete="off" data-price="${f.id}" value="${config.prices[f.id]??0}" aria-label="Precio ${esc(f.name)}">
+        <input type="text" inputmode="decimal" autocomplete="off" data-cost="${f.id}" value="${config.costs[f.id]??0}" aria-label="Costo ${esc(f.name)}"></div>
+        <div class="pmeta"><span class="sw" style="background:${f.c}"></span>${kindTxt(f.k)} · quedan ${stock(f.id)}${f.hidden?' · <b style="color:var(--brasa)">Oculto</b>':""}<button class="btn sm ${f.hidden?"dark":""}" data-hide="${f.id}">${f.hidden?"Mostrar":"Ocultar"}</button></div>`).join("")}
+      ${addProd?`<div class="newprod"><h3 style="margin-bottom:8px">Nuevo producto</h3>
+        <label class="f" for="npName">Nombre</label><input class="inp" id="npName" maxlength="40" placeholder="Ej. Empanada de carne">
+        <div class="row2" style="margin-top:10px"><div><label class="f" for="npType">Tipo</label><select id="npType"><option value="emp">Empanada (va a cocina)</option><option value="beb">Bebida</option><option value="otro">Otro</option></select></div>
+        <div><label class="f" for="npColor">Color del botón</label><input type="color" id="npColor" value="#D62839"></div></div>
+        <div class="row2" style="margin-top:10px"><div><label class="f" for="npPrice">Precio $</label><input class="inp" id="npPrice" type="text" inputmode="decimal" autocomplete="off" placeholder="0.00"></div>
+        <div><label class="f" for="npCost">Costo $</label><input class="inp" id="npCost" type="text" inputmode="decimal" autocomplete="off" placeholder="0.00"></div></div>
+        <label class="f" for="npQty" style="margin-top:10px">Cantidad inicial en inventario</label><input class="inp" id="npQty" type="number" min="0" inputmode="numeric" placeholder="0">
+        <div class="row2" style="margin-top:12px"><button class="btn" id="npCancel">Cancelar</button><button class="btn primary" id="npSave">Guardar producto</button></div></div>`
+      :`<button class="btn dark" style="width:100%;margin-top:12px" id="npOpen">+ Agregar producto</button>`}
     </div>
     <div class="card"><h3>Equipo</h3>
       <label class="f">Caja y administración</label>
@@ -1305,7 +1270,7 @@ function renderSettings(){
       <label class="f" for="target">Tiempo meta por pedido (minutos)</label><input class="inp" id="target" type="number" min="1" inputmode="numeric" value="${config.target}">
     </div>
     <div class="card"><h3>Metas</h3>
-      <div class="row2"><div><label class="f" for="goal">Venta diaria ($)</label><input class="inp" type="number" min="0" inputmode="decimal" id="goal" value="${config.goal}"></div>
+      <div class="row2"><div><label class="f" for="goal">Venta diaria ($)</label><input class="inp" type="text" inputmode="decimal" autocomplete="off" id="goal" value="${config.goal}"></div>
       <div><label class="f" for="stockMax">Inventario lleno (unid.)</label><input class="inp" type="number" min="1" inputmode="numeric" id="stockMax" value="${config.stockMax}"></div></div>
     </div>
     <div class="stack">
@@ -1340,8 +1305,9 @@ document.addEventListener("change",async e=>{
 document.addEventListener("input",e=>{
   if(e.target.id==="client")client=e.target.value;
   if(["pin","nv","nc","kv","kc"].includes(e.target.id))e.target.value=e.target.value.replace(/\D/g,"");
-  if(e.target.id==="fondo"||e.target.id==="contado")updateCuadre();
-  if(e.target.id==="recv"){received=e.target.value;const tot=acctTotal(acct);const r=parseFloat(received);const v=r-tot;$("#vuelto").innerHTML=received!==""&&!isNaN(r)?(v>=0?`<span class="m">Vuelto</span><div class="change">${money(v)}</div>`:`<b class="down">Faltan ${money(-v)}</b>`):""}
+  if(DEC_IDS.includes(e.target.id)||e.target.dataset.price!==undefined||e.target.dataset.cost!==undefined){const v=e.target.value,c=v.replace(/[^\d.,]/g,"");if(c!==v)e.target.value=c}
+  if(e.target.id==="fondo"||e.target.id==="contado"){const k=dkey(cajaDay);cajaDraft[k]={...(cajaDraft[k]||{}),[e.target.id]:e.target.value};updateCuadre()}
+  if(e.target.id==="recv"){received=e.target.value;const tot=acctTotal(acct);const r=numIn(received);const v=r-tot;$("#vuelto").innerHTML=received!==""&&!isNaN(r)?(v>=0?`<span class="m">Vuelto</span><div class="change">${money(v)}</div>`:`<b class="down">Faltan ${money(-v)}</b>`):""}
 });
 document.addEventListener("click",async ev=>{
   const b=ev.target.closest("button");if(!b||b.disabled)return;
@@ -1356,12 +1322,29 @@ document.addEventListener("click",async ev=>{
   if(b.id==="saveMins"){if(!isAdmin())return;const mins={};document.querySelectorAll("[data-min]").forEach(i=>{mins[i.dataset.min]=Math.max(0,parseInt(i.value,10)||0)});
     config.mins={...config.mins,...mins};config.alertPhone=$("#alertPhone").value.trim().slice(0,20);config.alertHour=$("#alertHour").value||"";
     try{await saveConfig();lastLows=null;checkLowAlerts();toast("Mínimos y alertas guardados")}catch(e){toast("No se pudo guardar",true)}showMins=false;render();return}
-  if(b.id==="driveXls"){if(!isAdmin())return;driveExport(b);return}
   if(b.id==="bkJson"){makeBackup("json",b);return}
-  if(b.id==="bkCsv"){makeBackup("csv",b);return}
+  if(b.id==="bkXlsx"){makeXlsx(b);return}
+  if(b.id==="npOpen"){addProd=true;renderSettings();setTimeout(()=>{const a=document.activeElement;if(!a||a===document.body||a.id==="npOpen")$("#npName")?.focus()},50);return}
+  if(b.id==="npCancel"){addProd=false;renderSettings();return}
+  if(b.id==="npSave"){if(!isAdmin()){toast("Solo un administrador puede hacer esto",true);return}
+    const name=$("#npName").value.trim();if(!name){toast("Escribe el nombre del producto",true);return}
+    if(PRODUCTS.some(p=>p.name.toLowerCase()===name.toLowerCase())){toast("Ya existe un producto con ese nombre",true);return}
+    const k=$("#npType").value,price=numIn($("#npPrice").value),cost=numIn($("#npCost").value)||0,qty=Math.max(0,parseInt($("#npQty").value,10)||0);
+    if(!(price>0)){toast("Escribe el precio de venta",true);return}
+    const id=name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"").slice(0,12)+"_"+Date.now().toString(36).slice(-4);
+    const list=[...PRODUCTS,{id,name,c:$("#npColor").value||"#D62839",k,hidden:false}];
+    config.products=list;setProducts(list);config.prices[id]=Math.round(price*100)/100;config.costs[id]=Math.round(cost*100)/100;config.mins[id]=k==="emp"?10:6;
+    try{await saveConfig();await setStock({[id]:qty});addProd=false;toast(name+" agregado");render()}catch(e){toast("No se pudo guardar el producto",true)}
+    return}
+  if(b.dataset.hide){if(!isAdmin()){toast("Solo un administrador puede hacer esto",true);return}
+    const p=PRODUCTS.find(x=>x.id===b.dataset.hide);if(!p)return;
+    if(!p.hidden&&VIS.filter(x=>x.k===p.k).length<=1&&p.k!=="otro"&&!await ask(`${p.name} es el único producto de su tipo a la venta. ¿Ocultarlo igual?`,{ok:"Ocultar"}))return;
+    p.hidden=!p.hidden;for(const id in cart)if(P(id).hidden)delete cart[id];setProducts(PRODUCTS);config.products=PRODUCTS;
+    try{await saveConfig();toast(p.hidden?p.name+" oculto":p.name+" visible otra vez");render()}catch(e){toast("No se pudo guardar",true)}
+    return}
   if(b.id==="authEnter"){authLogin();return}
   if(b.id==="authReset"){authReset();return}
-  if(b.id==="authOut"){if(await ask("¿Cerrar la sesión segura de este dispositivo? Tendrás que volver a escribir el correo y la contraseña.",{ok:"Cerrar sesión",danger:true})){if(shiftId)await endShift(shiftId);try{ssDel()}catch(e){}await cacheClear();await firebase.auth().signOut()}return}
+  if(b.id==="authOut"){if(await ask("¿Cerrar la sesión segura de este dispositivo? Tendrás que volver a escribir el correo y la contraseña.",{ok:"Cerrar sesión",danger:true})){if(shiftId)await endShift(shiftId);try{ssDel()}catch(e){}await firebase.auth().signOut()}return}
   if(b.dataset.me!==undefined&&pendingRole){setSession(pendingRole,b.dataset.me);toast("Hola, "+b.dataset.me);render();window.scrollTo(0,0);return}
   if(b.id==="backLogin"){pendingRole=null;renderGate();return}
   if(b.dataset.login){loginRole=b.dataset.login;renderGate();return}
@@ -1467,12 +1450,12 @@ document.addEventListener("click",async ev=>{
     await setStock({[id]:b.dataset.invadd?stock(id)+v:v}).catch(()=>toast("No se pudo guardar",true));
     toast(`${P(id).name}: ${stock(id)} unidades`);render();return;
   }
-  if(b.id==="refill"){if(!isAdmin()){toast("Solo un administrador puede hacer esto",true);return}if(!await ask(`¿Poner todos los productos en ${config.stockMax} unidades?`))return;await setStock(Object.fromEntries(PRODUCTS.map(p=>[p.id,config.stockMax]))).catch(()=>toast("No se pudo guardar",true));toast("Inventario repuesto");render();return}
+  if(b.id==="refill"){if(!isAdmin()){toast("Solo un administrador puede hacer esto",true);return}if(!await ask(`¿Poner todos los productos en ${config.stockMax} unidades?`))return;await setStock(Object.fromEntries(VIS.map(p=>[p.id,config.stockMax]))).catch(()=>toast("No se pudo guardar",true));toast("Inventario repuesto");render();return}
   if(b.dataset.day){cajaDay+=Number(b.dataset.day)*DAY;cajaDay=dayStart(new Date(cajaDay+36e5*3));renderCaja();return}
   if(b.id==="cerrar"){
-    const {st}=dayData(cajaDay);const fondo=parseFloat($("#fondo").value)||0;const cv=$("#contado").value;
-    if(cv===""){toast("Escribe el efectivo contado",true);return}
-    const contado=parseFloat(cv)||0;const esperado=fondo+st.cash;
+    const {st}=dayData(cajaDay);const fondo=numIn($("#fondo").value)||0;const cv=$("#contado").value.trim();
+    if(cv===""||isNaN(numIn(cv))){toast("Escribe el efectivo contado",true);return}
+    const contado=numIn(cv)||0;const esperado=fondo+st.cash;
     const oa=cajaDay===dayStart()?openAccts():[];const oaTot=oa.reduce((a,c)=>a+acctTotal(c.id),0);
     if(oa.length&&!await ask(`Hay ${oa.length} ${oa.length===1?"cuenta":"cuentas"} sin cobrar por ${money(oaTot)}. No se sumarán a este cierre. ¿Cerrar la caja de todos modos?`,{ok:"Cerrar igual",danger:true}))return;
     const rec={fecha:dkey(cajaDay),closedBy:who||"",fondo,contado,efectivo:st.cash,transferencias:st.rev-st.cash,ventas:st.rev,pedidos:st.tickets,empanadas:st.u,bebidas:st.b,esperado,diferencia:Math.round((contado-esperado)*100)/100,closedAt:Date.now(),pendientes:oa.length,pendienteMonto:Math.round(oaTot*100)/100};
@@ -1486,27 +1469,11 @@ document.addEventListener("click",async ev=>{
   if(b.id==="demoOn"){demo=true;demoSales=null;demoShifts=null;renderAnalysis();return}
   if(b.id==="demoOff"){demo=false;renderAnalysis();return}
   if(b.id==="demoToggle"){demo=!demo;demoSales=null;demoShifts=null;tab="analisis";render();return}
-  if(b.id==="addProd"){if(!isAdmin())return;
-    const name=($("#npName").value||"").trim().slice(0,30);const price=parseFloat($("#npPrice").value);const cost=parseFloat($("#npCost").value)||0;
-    const k=$("#npKind").value==="beb"?"beb":"emp";const qty=Math.max(0,parseInt($("#npStock").value,10)||0);const c=$("#npColor").value||"#C2410C";
-    if(!name){toast("Escribe el nombre del producto",true);return}
-    if(!(price>0)){toast("Escribe el precio",true);return}
-    if(ALL_PRODUCTS.some(p=>p.name.toLowerCase()===name.toLowerCase())){toast("Ya existe un producto con ese nombre",true);return}
-    const id="p_"+name.toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g,"").slice(0,12)+"_"+Date.now().toString(36).slice(-4);
-    b.disabled=true;
-    config.extra=[...(config.extra||[]),{id,name,c,k}];config.prices[id]=Math.round(price*100)/100;config.costs[id]=Math.round(cost*100)/100;config.mins[id]=k==="emp"?10:6;applyProducts();
-    try{await saveConfig();await setStock({[id]:qty});newProdOpen=false;toast(`${name} agregado`)}catch(e){toast("No se pudo guardar",true)}
-    render();return}
-  if(b.dataset.phide){if(!isAdmin())return;const id=b.dataset.phide;const off=config.hidden.includes(id);
-    if(!off&&PRODUCTS.length<=1){toast("Debe quedar al menos un producto",true);return}
-    if(!off&&Object.keys(cart).includes(id))delete cart[id];
-    config.hidden=off?config.hidden.filter(x=>x!==id):[...config.hidden,id];applyProducts();
-    try{await saveConfig();toast(`${P(id).name} ${off?"visible otra vez":"oculto"}`)}catch(e){toast("No se pudo guardar",true)}
-    render();return}
   if(b.id==="saveCfg"){if(!isAdmin()){toast("Solo un administrador puede hacer esto",true);return}
-    document.querySelectorAll("[data-price]").forEach(i=>config.prices[i.dataset.price]=Math.max(0,parseFloat(i.value)||0));
-    document.querySelectorAll("[data-cost]").forEach(i=>config.costs[i.dataset.cost]=Math.max(0,parseFloat(i.value)||0));
-    config.goal=Math.max(0,parseFloat($("#goal").value)||0);
+    document.querySelectorAll("[data-price]").forEach(i=>config.prices[i.dataset.price]=Math.max(0,numIn(i.value)||0));
+    document.querySelectorAll("[data-cost]").forEach(i=>config.costs[i.dataset.cost]=Math.max(0,numIn(i.value)||0));
+    document.querySelectorAll("[data-pname]").forEach(i=>{const p=PRODUCTS.find(x=>x.id===i.dataset.pname),v=i.value.trim();if(p&&v)p.name=v});config.products=PRODUCTS;
+    config.goal=Math.max(0,numIn($("#goal").value)||0);
     config.target=Math.max(1,parseFloat($("#target").value)||8);
     config.stockMax=Math.max(1,parseInt($("#stockMax").value,10)||50);
     demoSales=null;
@@ -1515,9 +1482,7 @@ document.addEventListener("click",async ev=>{
   }
   if(b.id==="wipe"){if(!isAdmin()){toast("Solo un administrador puede hacer esto",true);return}
     if(!await ask("Se borrarán todas las ventas, cuentas y ventas perdidas. Descarga antes una copia si la necesitas. ¿Continuar?",{ok:"Borrar todo",danger:true}))return;
-    if(db){const del=async col=>{const sn=await db.collection(col).get();for(const x of sn.docs){try{await x.ref.delete()}catch(e){}}};
-      try{await del("ventas");await del("cuentas");await del("perdidas")}catch(e){}
-      config.resetAt=Date.now();try{await saveConfig()}catch(e){}return}else{sales=[];cuentas=[];perdidas=[];saveLocal()}acct=null;charging=false;
+    if(db){for(const s of[...sales]){try{await db.collection("ventas").doc(s.id).delete()}catch(e){}}for(const c of[...cuentas]){try{await db.collection("cuentas").doc(c.id).delete()}catch(e){}}}else{sales=[];cuentas=[];perdidas=[];saveLocal()}acct=null;charging=false;
     toast("Ventas borradas");render();
   }
 });

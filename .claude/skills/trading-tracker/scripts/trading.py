@@ -595,7 +595,9 @@ def sim_estado(args, cfg):
         if ref and all(t in prices for t in ref):
             bench = sum(prices[t] / ref[t] - 1 for t in ref) / len(ref) * 100
             L.append(f"- Referencia (comprar y mantener las 5 por igual desde el inicio): {bench:+.2f}% → "
-                     + ("vas GANANDO a la referencia" if res / st["saldo_inicial"] * 100 > bench else "vas PERDIENDO contra la referencia"))
+                     + ("EMPATADO con la referencia" if abs(res / st["saldo_inicial"] * 100 - bench) < 0.005
+                        else "vas GANANDO a la referencia" if res / st["saldo_inicial"] * 100 > bench
+                        else "vas PERDIENDO contra la referencia"))
         st["historial_valor"].append({"fecha": now_s(), "valor": round(total, 2)})
     if errs:
         L.append(f"- Errores de precio: {'; '.join(errs)}")

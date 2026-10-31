@@ -63,10 +63,14 @@ python3 scripts/trading.py sim vender NVDA 5 --motivo "tocó objetivo"
 python3 scripts/trading.py sim estado            # valoriza con precios actuales
 python3 scripts/trading.py sim estado --precios "AAPL=270,NVDA=190"   # precios manuales
 ```
-Rutina diaria antes de la apertura (8:47 hora de Ecuador = Nueva York):
-1. `sim estado`: revisar alertas de stop y objetivo y vender lo que corresponda.
+### Datos reales (obligatorio)
+El entorno en la nube no tiene acceso directo a Yahoo. El workflow `.github/workflows/datos-mercado.yml` descarga los precios reales en `datos/TICKER.csv`. La skill usa Yahoo en vivo si hay red y, si no, esos CSV.
+Para refrescarlos: escribe la fecha y hora actual en `datos/solicitud.txt`, haz commit y push a `feature/trading-tracker-skill`, espera hasta que aparezca un commit nuevo "Datos de mercado: ..." (≈1 min) y haz `git pull`. Verifica en `datos/AAPL.csv` que el último día sea la sesión de hoy antes de operar.
+
+Rutina diaria DESPUÉS del cierre (16:23 hora de Ecuador/Nueva York), simulando órdenes al precio de cierre del día:
+1. Refrescar datos (ver arriba) y `sim estado`: vender lo que tocó stop u objetivo.
 2. `scan`: para cada señal COMPRAR con R:R ≥ 1.5 y backtest con promedio positivo, comprar con el tamaño del plan, ajustado al efectivo disponible. Registrar siempre stop, objetivo y motivo.
 3. Vender las posiciones cuya señal pasó a VENDER/EVITAR.
-4. Informar al usuario: qué se hizo y por qué, el valor de la cartera y la comparación con la referencia.
-Si no hay precios reales disponibles (red bloqueada), NO operes con precios inventados: pídele los precios al usuario o que habilite query1.finance.yahoo.com.
-El precio usado es el último cierre (simulación de una orden al precio de cierre o de apertura; se aclara al usuario).
+4. Commit y push de `simulacion/estado.json`.
+5. Informar al usuario: qué se hizo y por qué, el valor de la cartera y la comparación con la referencia.
+Nunca operes con precios inventados ni con datos simulados. Si no hay datos del día, dilo y no operes.

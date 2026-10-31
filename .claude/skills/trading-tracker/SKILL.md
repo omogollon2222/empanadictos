@@ -53,3 +53,20 @@ Backtest: entra al día siguiente de cada señal ≥ 3, sale en stop, objetivo o
 - No ejecutes órdenes en ningún bróker; esta skill solo analiza y registra.
 - Si el usuario pregunta por noticias o resultados trimestrales, complementa con búsqueda web y separa claramente lo técnico de lo fundamental.
 - Nota: CARR es Carrier Global (climatización/HVAC, no tecnológica). Si el usuario quería otra empresa, cámbiala en `config.json`.
+
+## Simulación (paper trading con dinero virtual)
+Estado guardado en `simulacion/estado.json` (versionado en git: haz commit y push después de cada cambio, porque el contenedor de la nube es temporal).
+```
+python3 scripts/trading.py sim iniciar --saldo 5000 --fin 2026-11-06
+python3 scripts/trading.py sim comprar NVDA 5 --stop 180 --objetivo 205 --motivo "señal COMPRAR puntaje 4"
+python3 scripts/trading.py sim vender NVDA 5 --motivo "tocó objetivo"
+python3 scripts/trading.py sim estado            # valoriza con precios actuales
+python3 scripts/trading.py sim estado --precios "AAPL=270,NVDA=190"   # precios manuales
+```
+Rutina diaria antes de la apertura (8:47 hora de Ecuador = Nueva York):
+1. `sim estado`: revisar alertas de stop y objetivo y vender lo que corresponda.
+2. `scan`: para cada señal COMPRAR con R:R ≥ 1.5 y backtest con promedio positivo, comprar con el tamaño del plan, ajustado al efectivo disponible. Registrar siempre stop, objetivo y motivo.
+3. Vender las posiciones cuya señal pasó a VENDER/EVITAR.
+4. Informar al usuario: qué se hizo y por qué, el valor de la cartera y la comparación con la referencia.
+Si no hay precios reales disponibles (red bloqueada), NO operes con precios inventados: pídele los precios al usuario o que habilite query1.finance.yahoo.com.
+El precio usado es el último cierre (simulación de una orden al precio de cierre o de apertura; se aclara al usuario).

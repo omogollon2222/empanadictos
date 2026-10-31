@@ -11,6 +11,10 @@ Uso:
   python3 trading.py log compra AAPL 10 182.5 [--nota "..."]
   python3 trading.py log venta  AAPL 10 195.0
   python3 trading.py diario                    # P&L realizado y posiciones abiertas
+  python3 trading.py sim iniciar --saldo 5000 --fin 2026-11-06
+  python3 trading.py sim comprar NVDA 5 [--precio 190 --stop 180 --objetivo 205]
+  python3 trading.py sim vender NVDA 5
+  python3 trading.py sim estado [--precios "AAPL=270,NVDA=190"]
 
 AVISO: herramienta educativa/analítica. No es asesoría financiera.
 """
@@ -392,6 +396,166 @@ def cmd_diario(args, cfg):
             print(f"- {t}: {sh:g} acciones, costo promedio ${cost/sh:,.2f} (incluye comisión)")
 
 
+
+# -------------------------------------------------------------- simulador
+SIM_PATH = os.path.join(BASE, "simulacion", "estado.json")
+
+
+def sim_load():
+    if not os.path.exists(SIM_PATH):
+        sys.exit("No hay simulación activa. Usa: trading.py sim iniciar --saldo 5000")
+    with open(SIM_PATH, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def sim_save(st):
+    os.makedirs(os.path.dirname(SIM_PATH), exist_ok=True)
+    with open(SIM_PATH, "w", encoding="utf-8") as f:
+        json.dump(st, f, ensure_ascii=False, indent=2)
+
+
+def parse_precios(txt):
+    out = {}
+    for part in (txt or "").split(","):
+        if "=" in part:
+            k, v = part.split("=")
+            out[k.strip().upper()] = float(v)
+    return out
+
+
+def get_prices(tickers, manual, cfg):
+    prices, errs = {}, []
+    for t in tickers:
+        if t in manual:
+            prices[t] = manual[t]
+            continue
+        try:
+            prices[t] = fetch_yahoo(t, "5d")[-1]["close"]
+        except Exception as e:  # noqa: BLE001
+            errs.append(f"{t}: {str(e)[:60]}")
+    return prices, errs
+
+
+def now_s():
+    return datetime.now().strftime("%Y-%m-%d %H:%M")
+
+
+def sim_iniciar(args, cfg):
+    if os.path.exists(SIM_PATH) and not args.reiniciar:
+        sys.exit("Ya hay una simulación. Usa --reiniciar para empezar de cero.")
+    st = {"inicio": now_s(), "fin": args.fin, "saldo_inicial": args.saldo, "efectivo": args.saldo,
+          "posiciones": {}, "operaciones": [], "referencia_inicio": {}, "historial_valor": []}
+    sim_save(st)
+    print(f"Simulación iniciada con ${args.saldo:,.2f} de efectivo virtual. Fin: {args.fin or 'sin fecha'}")
+
+
+def sim_operar(args, cfg, tipo):
+    st, t = sim_load(), args.ticker.upper()
+    manual = {t: args.precio} if args.precio else {}
+    prices, errs = get_prices([t], manual, cfg)
+    if t not in prices:
+        sys.exit(f"No pude obtener el precio de {t} ({'; '.join(errs)}). Pásalo con --precio.")
+    px, q = prices[t], args.acciones
+    fee = fees(cfg, q * px)
+    pos = st["posiciones"].get(t, {"acciones": 0, "costo_total": 0.0})
+    if tipo == "compra":
+        total = q * px + fee
+        if total > st["efectivo"] + 1e-9:
+            sys.exit(f"Saldo insuficiente: necesitas ${total:,.2f} y tienes ${st['efectivo']:,.2f}")
+        st["efectivo"] -= total
+        pos["acciones"] += q
+        pos["costo_total"] += total
+        if args.stop: pos["stop"] = args.stop
+        if args.objetivo: pos["objetivo"] = args.objetivo
+        st["posiciones"][t] = pos
+        pnl = None
+    else:
+        if q > pos["acciones"] + 1e-9:
+            sys.exit(f"Solo tienes {pos['acciones']:g} acciones de {t}")
+        avg = pos["costo_total"] / pos["acciones"]
+        pnl = q * (px - avg) - fee
+        st["efectivo"] += q * px - fee
+        pos["acciones"] -= q
+        pos["costo_total"] -= q * avg
+        if pos["acciones"] <= 1e-9:
+            st["posiciones"].pop(t)
+        else:
+            st["posiciones"][t] = pos
+    st["operaciones"].append({"fecha": now_s(), "tipo": tipo, "ticker": t, "acciones": q, "precio": px,
+                              "comision": round(fee, 2), "pnl": None if pnl is None else round(pnl, 2),
+                              "motivo": args.motivo or ""})
+    sim_save(st)
+    msg = f"{tipo.upper()} {q:g} {t} @ ${px:,.2f} (comisión ${fee:,.2f})"
+    if pnl is not None:
+        msg += f" → P&L neto ${pnl:+,.2f}"
+    print(msg + f". Efectivo: ${st['efectivo']:,.2f}")
+
+
+def sim_estado(args, cfg):
+    st = sim_load()
+    manual = parse_precios(args.precios)
+    tick = list(cfg["watchlist"].keys())
+    for t in st["posiciones"]:
+        if t not in tick:
+            tick.append(t)
+    prices, errs = get_prices(tick, manual, cfg)
+    if not st["referencia_inicio"] and len(prices) == len(cfg["watchlist"]):
+        st["referencia_inicio"] = {t: prices[t] for t in cfg["watchlist"]}
+    L = [f"# Simulación — estado al {now_s()}", ""]
+    valor_pos, faltan = 0.0, []
+    L += ["| Ticker | Acciones | Costo prom. | Precio | Valor | P&L no realizado | Stop | Objetivo | Alerta |",
+          "|---|---:|---:|---:|---:|---:|---:|---:|---|"]
+    for t, p in st["posiciones"].items():
+        avg = p["costo_total"] / p["acciones"]
+        px = prices.get(t)
+        if px is None:
+            faltan.append(t)
+            L.append(f"| {t} | {p['acciones']:g} | {avg:,.2f} | — | — | — | {fmt(p.get('stop'))} | {fmt(p.get('objetivo'))} | sin precio |")
+            continue
+        val = p["acciones"] * px
+        valor_pos += val
+        alerta = ""
+        if p.get("stop") and px <= p["stop"]:
+            alerta = "⚠️ tocó STOP → vender"
+        elif p.get("objetivo") and px >= p["objetivo"]:
+            alerta = "🎯 llegó al OBJETIVO → tomar ganancia"
+        L.append(f"| {t} | {p['acciones']:g} | {avg:,.2f} | {px:,.2f} | {val:,.2f} | {val - p['costo_total']:+,.2f} | "
+                 f"{fmt(p.get('stop'))} | {fmt(p.get('objetivo'))} | {alerta} |")
+    if not st["posiciones"]:
+        L.append("| — | sin posiciones | | | | | | | |")
+    realizado = sum(o["pnl"] or 0 for o in st["operaciones"])
+    cerradas = [o for o in st["operaciones"] if o["pnl"] is not None]
+    L += [""]
+    if faltan:
+        L.append(f"⚠️ Sin precio para {', '.join(faltan)}: el valor total está incompleto.")
+    else:
+        total = st["efectivo"] + valor_pos
+        res = total - st["saldo_inicial"]
+        L += [f"- Efectivo: **${st['efectivo']:,.2f}** · En acciones: **${valor_pos:,.2f}**",
+              f"- Valor total: **${total:,.2f}** → resultado **${res:+,.2f} ({res / st['saldo_inicial'] * 100:+.2f}%)**",
+              f"- P&L realizado: ${realizado:+,.2f} en {len(cerradas)} ventas"
+              + (f" · aciertos {sum(1 for o in cerradas if o['pnl'] > 0) / len(cerradas) * 100:.0f}%" if cerradas else "")]
+        ref = st["referencia_inicio"]
+        if ref and all(t in prices for t in ref):
+            bench = sum(prices[t] / ref[t] - 1 for t in ref) / len(ref) * 100
+            L.append(f"- Referencia (comprar y mantener las 5 por igual desde el inicio): {bench:+.2f}% → "
+                     + ("vas GANANDO a la referencia" if res / st["saldo_inicial"] * 100 > bench else "vas PERDIENDO contra la referencia"))
+        st["historial_valor"].append({"fecha": now_s(), "valor": round(total, 2)})
+    if errs:
+        L.append(f"- Errores de precio: {'; '.join(errs)}")
+    sim_save(st)
+    print("\n".join(L))
+
+
+def sim_cmd(args, cfg):
+    if args.accion == "iniciar":
+        sim_iniciar(args, cfg)
+    elif args.accion in ("comprar", "vender"):
+        sim_operar(args, cfg, "compra" if args.accion == "comprar" else "venta")
+    else:
+        sim_estado(args, cfg)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sp = ap.add_subparsers(dest="cmd", required=True)
@@ -412,9 +576,25 @@ def main():
     lg.add_argument("--nota")
     lg.add_argument("--fecha")
     sp.add_parser("diario")
+    sm = sp.add_parser("sim", help="cartera simulada (paper trading)")
+    ss = sm.add_subparsers(dest="accion", required=True)
+    a = ss.add_parser("iniciar")
+    a.add_argument("--saldo", type=float, default=5000)
+    a.add_argument("--fin")
+    a.add_argument("--reiniciar", action="store_true")
+    for nombre in ("comprar", "vender"):
+        b = ss.add_parser(nombre)
+        b.add_argument("ticker")
+        b.add_argument("acciones", type=float)
+        b.add_argument("--precio", type=float)
+        b.add_argument("--stop", type=float)
+        b.add_argument("--objetivo", type=float)
+        b.add_argument("--motivo")
+    e = ss.add_parser("estado")
+    e.add_argument("--precios", help='manual: "AAPL=270.5,NVDA=190"')
     args = ap.parse_args()
     cfg = load_config()
-    {"scan": cmd_scan, "calc": cmd_calc, "log": cmd_log, "diario": cmd_diario}[args.cmd](args, cfg)
+    {"scan": cmd_scan, "calc": cmd_calc, "log": cmd_log, "diario": cmd_diario, "sim": sim_cmd}[args.cmd](args, cfg)
 
 
 if __name__ == "__main__":

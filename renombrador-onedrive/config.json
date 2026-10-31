@@ -1,0 +1,25 @@
+{
+  "Carpeta": "C:\\Users\\SU_USUARIO\\OneDrive - EMPRESA\\Cliente\\Documentos",
+  "IncluirSubcarpetas": false,
+  "Extensiones": [".pdf"],
+
+  "PatronExtraccion": "^(?<Tipo>[A-Za-z]+)[ _-]*(?<Numero>\\d+)",
+  "Plantilla": "{Cliente}-{Proyecto}-{Tipo}-{Numero}-{Fecha}",
+  "Valores": {
+    "Cliente": "CLIENTE",
+    "Proyecto": "PRY001"
+  },
+
+  "FormatoFecha": "yyyyMMdd",
+  "FuenteFecha": "Modificacion",
+  "ConsecutivoInicio": 1,
+  "ConsecutivoDigitos": 3,
+
+  "Mayusculas": true,
+  "QuitarTildes": true,
+  "ReemplazarEspaciosCon": "_",
+  "LongitudMaximaRuta": 255,
+
+  "VerificarHash": true,
+  "Delimitador": ";"
+}

@@ -40,12 +40,26 @@ def load_config():
 
 
 # ----------------------------------------------------------------- datos
-def fetch_yahoo(ticker, rango="2y"):
-    url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
-           f"?range={rango}&interval=1d&includeAdjustedClose=true")
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+DATOS_DIR = os.path.join(BASE, "datos")
+
+
+def _get(url):
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64)"})
     with urllib.request.urlopen(req, timeout=20) as r:
-        data = json.load(r)
+        return r.read().decode("utf-8")
+
+
+def fetch_yahoo(ticker, rango="2y"):
+    last = None
+    for host in ("query1", "query2"):
+        try:
+            data = json.loads(_get(f"https://{host}.finance.yahoo.com/v8/finance/chart/{ticker}"
+                                   f"?range={rango}&interval=1d"))
+            break
+        except Exception as e:  # noqa: BLE001
+            last = e
+    else:
+        raise last
     res = data["chart"]["result"][0]
     q = res["indicators"]["quote"][0]
     rows = []
@@ -71,6 +85,40 @@ def load_csv(path):
             except (ValueError, KeyError):
                 continue
     return rows
+
+
+def load_real(ticker, rango="2y"):
+    """Datos reales: intenta Yahoo en vivo; si la red está bloqueada usa datos/TICKER.csv
+    (descargado por GitHub Actions). Devuelve (filas, fuente)."""
+    try:
+        return fetch_yahoo(ticker, rango), "Yahoo Finance (en vivo)"
+    except Exception as e:  # noqa: BLE001
+        path = os.path.join(DATOS_DIR, f"{ticker}.csv")
+        if os.path.exists(path):
+            return load_csv(path), "Yahoo Finance vía GitHub Actions (datos/)"
+        raise RuntimeError(f"sin red ({str(e)[:40]}) y sin datos/{ticker}.csv") from e
+
+
+def cmd_descargar(args, cfg):
+    os.makedirs(DATOS_DIR, exist_ok=True)
+    ok = 0
+    for t in [t.upper() for t in (args.tickers or cfg["watchlist"].keys())]:
+        try:
+            rows = fetch_yahoo(t, cfg.get("historial", "2y"))
+        except Exception as e:  # noqa: BLE001
+            print(f"ERROR {t}: {e}")
+            continue
+        with open(os.path.join(DATOS_DIR, f"{t}.csv"), "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["Date", "Open", "High", "Low", "Close", "Volume"])
+            for r in rows:
+                w.writerow([r["date"], r["open"], r["high"], r["low"], r["close"], r["volume"]])
+        ok += 1
+        print(f"{t}: {len(rows)} días, último {rows[-1]['date']} cierre {rows[-1]['close']:.2f}")
+    with open(os.path.join(DATOS_DIR, "actualizado.txt"), "w", encoding="utf-8") as f:
+        f.write(datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC") + "\n")
+    if ok == 0:
+        sys.exit(1)
 
 
 def demo_series(ticker, n=500):
@@ -309,7 +357,7 @@ def render(results, cfg, demo):
 
 def cmd_scan(args, cfg):
     tickers = [t.upper() for t in (args.tickers or cfg["watchlist"].keys())]
-    results = []
+    results, fuentes = [], set()
     for t in tickers:
         try:
             if args.demo:
@@ -317,13 +365,17 @@ def cmd_scan(args, cfg):
             elif args.csv_dir:
                 rows = load_csv(os.path.join(args.csv_dir, f"{t}.csv"))
             else:
-                rows = fetch_yahoo(t, cfg.get("historial", "2y"))
+                rows, fuente = load_real(t, cfg.get("historial", "2y"))
+                fuentes.add(fuente)
             if len(rows) < 60:
                 raise ValueError(f"historial insuficiente ({len(rows)} días)")
             results.append(analyze(cfg, t, rows))
         except Exception as e:  # noqa: BLE001 — reportar y seguir con los demás
             results.append({"ticker": t, "nombre": cfg["watchlist"].get(t, t), "error": str(e)[:80]})
     md = render(results, cfg, args.demo)
+    if fuentes:
+        md = md.replace("\n", f"\nFuente: {', '.join(sorted(fuentes))} · último dato: "
+                        f"{max((r.get('fecha') or '') for r in results)}\n", 1)
     os.makedirs(REPORT_DIR, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M")
     with open(os.path.join(REPORT_DIR, f"scan_{stamp}.json"), "w", encoding="utf-8") as f:
@@ -430,7 +482,9 @@ def get_prices(tickers, manual, cfg):
             prices[t] = manual[t]
             continue
         try:
-            prices[t] = fetch_yahoo(t, "5d")[-1]["close"]
+            rows, _ = load_real(t, "5d")
+            prices[t] = rows[-1]["close"]
+            prices.setdefault("_fecha", rows[-1]["date"])
         except Exception as e:  # noqa: BLE001
             errs.append(f"{t}: {str(e)[:60]}")
     return prices, errs
@@ -453,6 +507,7 @@ def sim_operar(args, cfg, tipo):
     st, t = sim_load(), args.ticker.upper()
     manual = {t: args.precio} if args.precio else {}
     prices, errs = get_prices([t], manual, cfg)
+    fecha_px = prices.pop("_fecha", None)
     if t not in prices:
         sys.exit(f"No pude obtener el precio de {t} ({'; '.join(errs)}). Pásalo con --precio.")
     px, q = prices[t], args.acciones
@@ -481,7 +536,7 @@ def sim_operar(args, cfg, tipo):
             st["posiciones"].pop(t)
         else:
             st["posiciones"][t] = pos
-    st["operaciones"].append({"fecha": now_s(), "tipo": tipo, "ticker": t, "acciones": q, "precio": px,
+    st["operaciones"].append({"fecha": now_s(), "fecha_precio": fecha_px or "manual", "tipo": tipo, "ticker": t, "acciones": q, "precio": px,
                               "comision": round(fee, 2), "pnl": None if pnl is None else round(pnl, 2),
                               "motivo": args.motivo or ""})
     sim_save(st)
@@ -499,9 +554,10 @@ def sim_estado(args, cfg):
         if t not in tick:
             tick.append(t)
     prices, errs = get_prices(tick, manual, cfg)
+    fecha_px = prices.pop("_fecha", None)
     if not st["referencia_inicio"] and len(prices) == len(cfg["watchlist"]):
         st["referencia_inicio"] = {t: prices[t] for t in cfg["watchlist"]}
-    L = [f"# Simulación — estado al {now_s()}", ""]
+    L = [f"# Simulación — estado al {now_s()}" + (f" (precios de cierre del {fecha_px})" if fecha_px else ""), ""]
     valor_pos, faltan = 0.0, []
     L += ["| Ticker | Acciones | Costo prom. | Precio | Valor | P&L no realizado | Stop | Objetivo | Alerta |",
           "|---|---:|---:|---:|---:|---:|---:|---:|---|"]
@@ -576,6 +632,8 @@ def main():
     lg.add_argument("--nota")
     lg.add_argument("--fecha")
     sp.add_parser("diario")
+    dl = sp.add_parser("descargar", help="guarda datos reales en datos/ (lo usa GitHub Actions)")
+    dl.add_argument("--tickers", nargs="+")
     sm = sp.add_parser("sim", help="cartera simulada (paper trading)")
     ss = sm.add_subparsers(dest="accion", required=True)
     a = ss.add_parser("iniciar")
@@ -594,7 +652,7 @@ def main():
     e.add_argument("--precios", help='manual: "AAPL=270.5,NVDA=190"')
     args = ap.parse_args()
     cfg = load_config()
-    {"scan": cmd_scan, "calc": cmd_calc, "log": cmd_log, "diario": cmd_diario, "sim": sim_cmd}[args.cmd](args, cfg)
+    {"scan": cmd_scan, "calc": cmd_calc, "log": cmd_log, "diario": cmd_diario, "sim": sim_cmd, "descargar": cmd_descargar}[args.cmd](args, cfg)
 
 
 if __name__ == "__main__":

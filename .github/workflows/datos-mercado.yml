@@ -1,0 +1,44 @@
+name: Datos de mercado (trading-tracker)
+
+# Descarga precios reales de Yahoo Finance y los guarda en
+# .claude/skills/trading-tracker/datos/ para que la skill los use
+# cuando su entorno no tiene acceso directo a internet.
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/trading-tracker-skill]
+    paths:
+      - ".claude/skills/trading-tracker/datos/solicitud.txt"
+      - ".github/workflows/datos-mercado.yml"
+  schedule:
+    # 8:15 y 16:20 hora de Nueva York/Ecuador (UTC-5), lunes a viernes
+    - cron: "15 13 * * 1-5"
+    - cron: "20 21 * * 1-5"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: datos-mercado
+  cancel-in-progress: false
+
+jobs:
+  descargar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/trading-tracker-skill
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Descargar precios reales
+        run: python3 .claude/skills/trading-tracker/scripts/trading.py descargar
+      - name: Guardar en el repositorio
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .claude/skills/trading-tracker/datos/*.csv .claude/skills/trading-tracker/datos/actualizado.txt
+          git diff --cached --quiet && exit 0
+          git commit -m "Datos de mercado: $(cat .claude/skills/trading-tracker/datos/actualizado.txt)"
+          for i in 1 2 3; do git pull --rebase origin feature/trading-tracker-skill && git push origin HEAD:feature/trading-tracker-skill && break; sleep 5; done

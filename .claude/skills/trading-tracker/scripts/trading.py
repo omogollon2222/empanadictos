@@ -614,6 +614,78 @@ def sim_cmd(args, cfg):
         sim_estado(args, cfg)
 
 
+# -------------------------------------------------------------- tablero
+def decision(cfg, r):
+    p, b = r.get("plan") or {}, r.get("backtest") or {}
+    c1 = r.get("senal") == "COMPRAR"
+    c2 = (p.get("ratio_rr") or 0) >= cfg.get("rr_minimo", 1.4)
+    c3 = (b.get("promedio_pct") or -1) > 0 and b.get("operaciones", 0) > 0
+    return c1, c2, c3
+
+
+def cmd_tablero(args, cfg):
+    """Exporta JSON para el tablero: senales, precios, cartera, posiciones, operaciones."""
+    out = args.out
+    os.makedirs(out, exist_ok=True)
+    rmin = cfg.get("rr_minimo", 1.4)
+    senales, precios, last = [], [], {}
+    for t, nombre in cfg["watchlist"].items():
+        rows, _ = load_real(t, cfg.get("historial", "2y"))
+        r = analyze(cfg, t, rows)
+        ind = indicators(rows)
+        for i in range(max(0, len(rows) - 120), len(rows)):
+            precios.append({"ticker": t, "fecha": rows[i]["date"], "cierre": round(rows[i]["close"], 2),
+                            "sma50": None if ind["sma50"][i] is None else round(ind["sma50"][i], 2)})
+        c1, c2, c3 = decision(cfg, r)
+        p, b = r.get("plan") or {}, r.get("backtest") or {}
+        last[t] = r["precio"]
+        senales.append({
+            "ticker": t, "nombre": nombre, "fecha": r["fecha"], "precio": round(r["precio"], 2),
+            "var_dia_pct": round(r["var_dia_pct"], 2), "var_1m_pct": round(r["var_1m_pct"], 2),
+            "var_3m_pct": round(r["var_3m_pct"], 2), "rsi": round(r["rsi"], 1), "puntaje": r["puntaje"],
+            "senal": r["senal"], "entrar": "ENTRAR" if (c1 and c2 and c3) else "NO ENTRAR",
+            "ok_senal": c1, "ok_rr": c2, "ok_backtest": c3, "rr_minimo": rmin,
+            "acciones": p.get("acciones"), "inversion": round(p.get("inversion", 0), 2),
+            "stop": round(p.get("stop", 0), 2), "objetivo": round(p.get("objetivo", 0), 2),
+            "ganancia_neta": round(p.get("ganancia_neta_objetivo", 0), 2),
+            "perdida_neta": round(p.get("perdida_neta_stop", 0), 2), "rr": round(p.get("ratio_rr") or 0, 2),
+            "bt_ops": b.get("operaciones", 0), "bt_acierto_pct": round(b.get("tasa_acierto", 0), 1),
+            "bt_prom_pct": round(b.get("promedio_pct", 0), 2), "razones": "; ".join(r["razones"])})
+    st = json.load(open(SIM_PATH, encoding="utf-8")) if os.path.exists(SIM_PATH) else None
+    cartera, posiciones, ops = [], [], []
+    if st:
+        val = 0.0
+        for t, p in st["posiciones"].items():
+            px = last.get(t) or 0
+            avg = p["costo_total"] / p["acciones"]
+            val += p["acciones"] * px
+            posiciones.append({"ticker": t, "acciones": p["acciones"], "costo_prom": round(avg, 2), "precio": round(px, 2),
+                               "valor": round(p["acciones"] * px, 2), "pnl": round(p["acciones"] * px - p["costo_total"], 2),
+                               "stop": p.get("stop"), "objetivo": p.get("objetivo")})
+        total = st["efectivo"] + val
+        ref = st.get("referencia_inicio") or {}
+        bench = (sum(last[t] / ref[t] - 1 for t in ref if t in last) / len(ref) * 100) if ref else 0
+        cerradas = [o for o in st["operaciones"] if o.get("pnl") is not None]
+        cartera.append({"saldo_inicial": st["saldo_inicial"], "efectivo": round(st["efectivo"], 2),
+                        "valor_acciones": round(val, 2), "valor_total": round(total, 2),
+                        "resultado_usd": round(total - st["saldo_inicial"], 2),
+                        "resultado_pct": round((total / st["saldo_inicial"] - 1) * 100, 2),
+                        "referencia_pct": round(bench, 2),
+                        "vs_referencia_pct": round((total / st["saldo_inicial"] - 1) * 100 - bench, 2),
+                        "operaciones": len(st["operaciones"]), "ventas": len(cerradas),
+                        "aciertos_pct": round(sum(1 for o in cerradas if o["pnl"] > 0) / len(cerradas) * 100, 1) if cerradas else None,
+                        "fecha_precios": senales[0]["fecha"], "inicio": st["inicio"], "fin": st.get("fin")})
+        for k, o in enumerate(st["operaciones"]):
+            ops.append({"n": k + 1, "fecha": o.get("fecha_precio") or o["fecha"], "tipo": o["tipo"], "ticker": o["ticker"],
+                        "acciones": o["acciones"], "precio": o["precio"], "comision": o["comision"],
+                        "pnl": o.get("pnl"), "motivo": o.get("motivo", "")})
+    for name, data in (("senales", senales), ("precios", precios), ("cartera", cartera),
+                       ("posiciones", posiciones), ("operaciones", ops)):
+        with open(os.path.join(out, f"{name}.json"), "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        print(f"{name}.json: {len(data)} filas")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sp = ap.add_subparsers(dest="cmd", required=True)
@@ -634,6 +706,8 @@ def main():
     lg.add_argument("--nota")
     lg.add_argument("--fecha")
     sp.add_parser("diario")
+    tb = sp.add_parser("tablero", help="exporta JSON para el tablero")
+    tb.add_argument("--out", default=os.path.join(BASE, "data", "tablero"))
     dl = sp.add_parser("descargar", help="guarda datos reales en datos/ (lo usa GitHub Actions)")
     dl.add_argument("--tickers", nargs="+")
     sm = sp.add_parser("sim", help="cartera simulada (paper trading)")
@@ -654,7 +728,7 @@ def main():
     e.add_argument("--precios", help='manual: "AAPL=270.5,NVDA=190"')
     args = ap.parse_args()
     cfg = load_config()
-    {"scan": cmd_scan, "calc": cmd_calc, "log": cmd_log, "diario": cmd_diario, "sim": sim_cmd, "descargar": cmd_descargar}[args.cmd](args, cfg)
+    {"scan": cmd_scan, "calc": cmd_calc, "log": cmd_log, "diario": cmd_diario, "sim": sim_cmd, "descargar": cmd_descargar, "tablero": cmd_tablero}[args.cmd](args, cfg)
 
 
 if __name__ == "__main__":

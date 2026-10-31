@@ -20,7 +20,7 @@ python3 scripts/trading.py scan
 python3 scripts/trading.py scan --tickers AAPL NVDA   # solo algunas
 ```
 - Datos diarios de Yahoo Finance (2 años). Si falla la red, prueba `--csv-dir <carpeta>` con archivos `TICKER.csv` (Date,Open,High,Low,Close,Volume) o `--demo` para probar (avisa siempre que son datos simulados).
-- Presenta al usuario: la tabla resumen, el plan por operación y las razones. Luego en 3–5 líneas: qué acción tiene mejor configuración hoy, cuál evitar, y si la **ganancia neta esperada justifica el riesgo** (R:R ≥ 1.5 y backtest con promedio por operación positivo).
+- Presenta al usuario: la tabla resumen, el plan por operación y las razones. Luego en 3–5 líneas: qué acción tiene mejor configuración hoy, cuál evitar, y si la **ganancia neta esperada justifica el riesgo** (R:R ≥ rr_minimo (1.4) y backtest con promedio por operación positivo).
 - Si el backtest de una acción da promedio negativo, dilo claro aunque la señal sea COMPRAR.
 
 ### 2. "¿Cuánto gano si compro a X y vendo a Y?"
@@ -69,8 +69,17 @@ Para refrescarlos: escribe la fecha y hora actual en `datos/solicitud.txt`, haz 
 
 Rutina diaria DESPUÉS del cierre (16:23 hora de Ecuador/Nueva York), simulando órdenes al precio de cierre del día:
 1. Refrescar datos (ver arriba) y `sim estado`: vender lo que tocó stop u objetivo.
-2. `scan`: para cada señal COMPRAR con R:R ≥ 1.5 y backtest con promedio positivo, comprar con el tamaño del plan, ajustado al efectivo disponible. Registrar siempre stop, objetivo y motivo.
+2. `scan`: para cada señal COMPRAR con R:R ≥ rr_minimo (1.4) y backtest con promedio positivo, comprar con el tamaño del plan, ajustado al efectivo disponible. Registrar siempre stop, objetivo y motivo.
 3. Vender las posiciones cuya señal pasó a VENDER/EVITAR.
 4. Commit y push de `simulacion/estado.json`.
 5. Informar al usuario: qué se hizo y por qué, el valor de la cartera y la comparación con la referencia.
 Nunca operes con precios inventados ni con datos simulados. Si no hay datos del día, dilo y no operes.
+
+## Tablero (dashboard)
+Tablero: https://claude.ai/artifact/GhBwmGxn53Cm6EwCJut3vs (tipo Dashboard; datasets en su base: senales, precios, cartera, posiciones, operaciones).
+Para actualizarlo después de cada turno de la simulación:
+1. `python3 scripts/trading.py tablero` genera `data/tablero/{senales,precios,cartera,posiciones,operaciones}.json`.
+2. Sube cada archivo como asset del artifact (Artifact publish con `url` del tablero, `asset: true`, un `file_path` por llamada).
+3. Con ArtifactData haz `update` de `datasets/<id>` con el nuevo `source.url`, `source.name` y `updated: {at, by}` (pasa `if_version` tras leer el documento).
+4. Borra los assets anteriores que ya no se usen.
+La página no cambia; solo cambian los datos.

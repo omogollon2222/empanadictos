@@ -13,5 +13,6 @@
   "stop_atr": 2.0,
   "objetivo_atr": 3.0,
   "dias_max_operacion": 20,
-  "historial": "2y"
+  "historial": "2y",
+  "rr_minimo": 1.4
 }

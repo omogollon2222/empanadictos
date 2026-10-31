@@ -55,7 +55,8 @@ Backtest: entra al día siguiente de cada señal ≥ 3, sale en stop, objetivo o
 - Nota: CARR es Carrier Global (climatización/HVAC, no tecnológica). Si el usuario quería otra empresa, cámbiala en `config.json`.
 
 ## Simulación (paper trading con dinero virtual)
-Estado guardado en `simulacion/estado.json` (versionado en git: haz commit y push después de cada cambio, porque el contenedor de la nube es temporal).
+Hay dos carteras de $5.000, una por método: `--cartera tecnico` (por defecto) y `--cartera cardona`.
+Estado guardado en `simulacion/tecnico.json` y `simulacion/cardona.json` (versionado en git: haz commit y push después de cada cambio, porque el contenedor de la nube es temporal).
 ```
 python3 scripts/trading.py sim iniciar --saldo 5000 --fin 2026-11-06
 python3 scripts/trading.py sim comprar NVDA 5 --stop 180 --objetivo 205 --motivo "señal COMPRAR puntaje 4"
@@ -69,9 +70,10 @@ Para refrescarlos: escribe la fecha y hora actual en `datos/solicitud.txt`, haz 
 
 Rutina diaria DESPUÉS del cierre (16:23 hora de Ecuador/Nueva York), simulando órdenes al precio de cierre del día:
 1. Refrescar datos (ver arriba) y `sim estado`: vender lo que tocó stop u objetivo.
-2. `scan`: para cada señal COMPRAR con R:R ≥ rr_minimo (1.4) y backtest con promedio positivo, comprar con el tamaño del plan, ajustado al efectivo disponible. Registrar siempre stop, objetivo y motivo.
-3. Vender las posiciones cuya señal pasó a VENDER/EVITAR.
-4. Commit y push de `simulacion/estado.json`.
+2. Cartera `tecnico`: para cada señal COMPRAR con R:R ≥ rr_minimo (1.4) y backtest con promedio positivo, comprar con el tamaño del plan, ajustado al efectivo disponible. Registrar siempre stop, objetivo y motivo.
+   Cartera `cardona`: `python3 scripts/trading.py tablero` y compra las acciones con `cd_entrar == "ENTRAR"` usando `cd_acciones`, `cd_stop` y `cd_objetivo` de `data/tablero/senales.json` (motivo = `cd_setup`).
+3. Vender las posiciones cuya señal pasó a VENDER/EVITAR (técnico) o a PUT (Cardona), y las que tocaron stop u objetivo, cada una en su cartera.
+4. Commit y push de `simulacion/*.json`.
 5. Informar al usuario: qué se hizo y por qué, el valor de la cartera y la comparación con la referencia.
 Nunca operes con precios inventados ni con datos simulados. Si no hay datos del día, dilo y no operes.
 
@@ -83,3 +85,11 @@ Para actualizarlo después de cada turno de la simulación:
 3. Con ArtifactData haz `update` de `datasets/<id>` con el nuevo `source.url`, `source.name` y `updated: {at, by}` (pasa `if_version` tras leer el documento).
 4. Borra los assets anteriores que ya no se usen.
 La página no cambia; solo cambian los datos.
+
+## Método Cardona
+Reglas públicas de Alejandro Cardona (seminario Creando Riqueza), adaptadas a datos diarios y a compra de acciones (sin opciones):
+- Piso y techo = mínimo y máximo de las últimas `cardona_canal_dias` (20) sesiones; son "fuertes" con 2 o más toques (dentro de `cardona_toque_pct` = 1,5%).
+- CALL (comprar): ruptura del techo con el precio sobre el promedio de 40 (objetivo = precio + altura del canal; stop = techo − 1 ATR); rebote en piso fuerte, a menos de 3% del piso y con el día al alza (objetivo = techo × 0,99; stop = piso × 0,99); cruce hacia arriba del promedio de 40 en los últimos 3 días (stop = promedio 40 − 1 ATR).
+- PUT (no entrar o vender): ruptura del piso, rechazo en techo fuerte, precio bajo el promedio de 40.
+- Para entrar exige además R:R ≥ `rr_minimo` y backtest de 2 años con promedio positivo.
+- Aclara siempre que es una adaptación (Cardona opera opciones en gráficos por hora) y que sus rentabilidades publicitadas no están verificadas.

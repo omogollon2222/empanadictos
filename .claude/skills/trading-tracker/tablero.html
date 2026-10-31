@@ -1,0 +1,389 @@
+<meta name="dash-one-writer">
+<style>
+  .tt { display: flex; flex-direction: column; gap: var(--cds-gap-xl); font-family: var(--font-anthropic-sans); font-variant-numeric: tabular-nums; }
+  .tt-head { display: flex; flex-direction: column; gap: var(--cds-gap-xs); }
+  .tt-head h1 { margin: 0; font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); text-wrap: balance; }
+  .tt-take { margin: 0; font-size: var(--cds-font-size-body); color: var(--color-fg); max-width: 70ch; }
+  .tt-sub { margin: 0; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .tt h2 { margin: 0; font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); }
+  .tt-sec { display: flex; flex-direction: column; gap: var(--cds-gap-md); }
+  .tt-note { margin: 0; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); max-width: 75ch; }
+  .tt-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: var(--cds-gap-md); }
+  .tt-tile { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); display: flex; flex-direction: column; gap: var(--cds-gap-xs); min-width: 0; }
+  .tt-tile .lbl { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .tt-tile .big { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); line-height: 1.1; }
+  .tt-tile .small { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .pos { color: var(--color-ok); }
+  .neg { color: var(--color-bad); }
+  .tt-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); gap: var(--cds-gap-md); min-height: 20rem; }
+  .tk { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); display: flex; flex-direction: column; gap: var(--cds-gap-sm); min-width: 0; }
+  .tk.go { border-color: var(--color-ok); box-shadow: inset 0 0 0 1px var(--color-ok); }
+  .tk-top { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--cds-gap-sm); }
+  .tk-name { display: flex; flex-direction: column; min-width: 0; }
+  .tk-name .t { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); }
+  .tk-name .n { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .chip { flex: none; font-size: var(--cds-font-size-caption); font-weight: var(--cds-font-weight-medium); letter-spacing: .04em; padding: 0.25rem 0.6rem; border-radius: 999px; white-space: nowrap; }
+  .chip.go { color: var(--color-ok); background: color-mix(in srgb, var(--color-ok) 14%, transparent); }
+  .chip.no { color: var(--color-fg-muted); background: color-mix(in srgb, var(--color-fg-muted) 14%, transparent); }
+  .tk-px { display: flex; align-items: baseline; gap: var(--cds-gap-sm); flex-wrap: wrap; }
+  .tk-px .p { font-family: var(--font-anthropic-serif); font-size: var(--cds-font-size-title); font-weight: 400; }
+  .tk-px .d { font-size: var(--cds-font-size-caption); }
+  .spark { position: relative; height: 72px; }
+  .spark svg { display: block; }
+  .tip { position: absolute; top: 0; pointer-events: none; background: var(--cds-surface-popover); border: 1px solid var(--cds-border); border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); padding: var(--cds-pad-xs) var(--cds-pad-sm); font-size: var(--cds-font-size-caption); white-space: nowrap; }
+  .tip .k { color: var(--cds-text-secondary); }
+  .gauge { display: flex; flex-direction: column; gap: 0.25rem; }
+  .gauge .row { display: flex; justify-content: space-between; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .gauge .bar { position: relative; height: 8px; border-radius: 4px; background: linear-gradient(90deg, color-mix(in srgb, var(--color-bad) 45%, transparent) 0 20%, color-mix(in srgb, var(--color-fg-muted) 22%, transparent) 20% 80%, color-mix(in srgb, var(--color-ok) 45%, transparent) 80% 100%); }
+  .gauge .dot { position: absolute; top: 50%; width: 14px; height: 14px; border-radius: 50%; background: var(--color-fg); border: 2px solid var(--color-panel); transform: translate(-50%, -50%); }
+  .checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; font-size: var(--cds-font-size-caption); }
+  .checks li { display: flex; gap: 0.5rem; align-items: baseline; }
+  .checks .m { flex: none; width: 1.1rem; text-align: center; font-weight: 700; }
+  .scen { display: grid; grid-template-columns: 1fr 1fr; gap: var(--cds-gap-sm); }
+  .scen div { border-radius: var(--cds-radius); padding: var(--cds-pad-sm); display: flex; flex-direction: column; gap: 0.1rem; font-size: var(--cds-font-size-caption); }
+  .scen .up { background: color-mix(in srgb, var(--color-ok) 10%, transparent); }
+  .scen .dn { background: color-mix(in srgb, var(--color-bad) 10%, transparent); }
+  .scen .v { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); }
+  .tk-foot { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .tt-how { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); display: flex; flex-direction: column; gap: var(--cds-gap-sm); }
+  .tt-how ol { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: 0.3rem; font-size: var(--cds-font-size-body); max-width: 75ch; }
+  .tblwrap { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); overflow-x: auto; }
+  .tblwrap table { border-collapse: collapse; width: 100%; font-size: var(--cds-font-size-caption); }
+  .tblwrap th { text-align: left; color: var(--color-fg-muted); font-weight: var(--cds-font-weight-medium); padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--color-border-line); white-space: nowrap; }
+  .tblwrap td { padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--color-border-line); white-space: nowrap; }
+  .tblwrap .num { text-align: right; }
+  .fail { display: flex; align-items: center; justify-content: center; gap: 0.5rem; color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); min-height: inherit; }
+  .fail::before { content: ""; width: 0.375rem; height: 0.375rem; border-radius: 50%; background: var(--color-bad); }
+  .chips { display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; }
+  .chip .who { font-weight: 400; opacity: .8; margin-right: 0.3rem; }
+  .meth { border-top: 1px solid var(--color-border-line); padding-top: var(--cds-pad-sm); display: flex; flex-direction: column; gap: var(--cds-gap-sm); }
+  .meth-h { display: flex; justify-content: space-between; align-items: baseline; gap: var(--cds-gap-sm); flex-wrap: wrap; }
+  .meth-h .t { font-size: var(--cds-font-size-caption); font-weight: var(--cds-font-weight-medium); letter-spacing: .05em; text-transform: uppercase; color: var(--color-fg-muted); }
+  .meth-h .s { font-size: var(--cds-font-size-caption); font-weight: var(--cds-font-weight-medium); }
+  .chan { position: relative; height: 8px; border-radius: 4px; background: linear-gradient(90deg, color-mix(in srgb, var(--color-ok) 40%, transparent), color-mix(in srgb, var(--color-fg-muted) 18%, transparent) 50%, color-mix(in srgb, var(--color-bad) 40%, transparent)); margin-inline: 7px; }
+  .chan .tick { position: absolute; top: -3px; width: 2px; height: 14px; background: var(--cds-chart-reference); transform: translateX(-1px); }
+  .carteras { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); gap: var(--cds-gap-md); min-height: 10rem; }
+  .cart { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); display: flex; flex-direction: column; gap: var(--cds-gap-md); min-width: 0; }
+  .cart h3 { margin: 0; font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); }
+  .cart .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--cds-gap-md); }
+  .cart .lbl { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); display: block; }
+  .cart .big { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); line-height: 1.1; display: block; }
+  .cart .small { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); display: block; }
+  .tt-how h3 { margin: 0; font-size: var(--cds-font-size-body); font-weight: var(--cds-font-weight-medium); }
+  .tt-how ul { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: 0.3rem; font-size: var(--cds-font-size-body); max-width: 75ch; }
+  .tt-how a { color: inherit; }
+  [data-dash-source-state=empty] { color: transparent; }
+  [data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
+</style>
+
+<div class="tt">
+  <header class="tt-head" id="inicio">
+    <h1>Tablero de Trading</h1>
+    <p class="tt-take" data-take="cero" hidden>Hoy ninguna de las <b data-draw="num" data-source="resumen" data-field="total" data-row="0" data-fmt="int">—</b> acciones da entrada, ni por el método técnico ni por el método Cardona. La recomendación es no entrar y quedarse en efectivo.</p>
+    <p class="tt-take" data-take="hay" hidden>Hoy el método técnico da entrada en <b data-draw="num" data-source="resumen" data-field="entrar" data-row="0" data-fmt="int">—</b> y el método Cardona en <b data-draw="num" data-source="resumen" data-field="entrar_cd" data-row="0" data-fmt="int">—</b> de <b data-draw="num" data-source="resumen" data-field="total" data-row="0" data-fmt="int">—</b> acciones. Las que dan entrada están marcadas en verde abajo.</p>
+    <p class="tt-sub">Precios reales de Yahoo Finance al cierre del <span data-draw="num" data-source="cartera" data-field="fecha_precios" data-row="0" data-fmt="text">—</span>. Lo único simulado es el dinero.</p>
+  </header>
+
+  <section class="tt-sec" id="simulacion">
+    <h2>Tu entrenamiento: dos métodos, $5.000 virtuales cada uno</h2>
+    <p class="tt-note">Cada método opera su propia cartera con los mismos precios reales. Al final de la semana se ve cuál ganó más y si alguno le ganó a comprar y mantener las 5 acciones desde el 30 de octubre.</p>
+    <div class="carteras" data-draw="carteras" data-source="cartera">—</div>
+  </section>
+
+  <section class="tt-sec" id="decision">
+    <h2>¿Entrar o no entrar?</h2>
+    <p class="tt-note">Cada tarjeta muestra los últimos 120 días de precio con el promedio de 40 días (línea punteada) y el piso y techo del canal de Cardona (líneas finas). Debajo, la decisión de cada método y lo que pasaría con tu dinero si entras hoy al precio de cierre.</p>
+    <div class="tt-cards" data-draw="cards" data-source="senales precios">—</div>
+  </section>
+
+  <section class="tt-sec" id="como">
+    <div class="tt-how">
+      <h2>Cómo decide el tablero</h2>
+      <h3>Método técnico</h3>
+      <ol>
+        <li><b>Señal técnica COMPRAR.</b> Suma un punto a favor o en contra por la tendencia (precio contra promedios de 20, 50 y 200 días), el impulso (MACD) y el RSI. Con +3 o más es COMPRAR.</li>
+        <li><b>La ganancia posible compensa el riesgo.</b> La ganancia neta si llega al objetivo dividida para la pérdida neta si toca el stop, ya descontadas las comisiones de $1 por orden.</li>
+        <li><b>La estrategia ha ganado con esa acción.</b> Probada sobre los últimos 2 años reales, la ganancia promedio por operación tiene que ser positiva.</li>
+      </ol>
+      <h3>Método Cardona</h3>
+      <p class="tt-note">Basado en lo que Alejandro Cardona enseña públicamente en su seminario Creando Riqueza: comprar cerca del piso del canal y vender cerca del techo, comprar CALL en la ruptura del techo, en un piso fuerte o con el promedio móvil de 40, y comprar PUT en un techo fuerte o en caídas.</p>
+      <ul>
+        <li><b>Piso y techo:</b> el mínimo y el máximo de las últimas 20 sesiones. Son fuertes si el precio los tocó 2 veces o más.</li>
+        <li><b>Señales CALL (comprar la acción):</b> ruptura del techo con el precio sobre el promedio de 40; rebote en un piso fuerte; cruce hacia arriba del promedio de 40 en los últimos 3 días.</li>
+        <li><b>Señales PUT (no entrar o vender):</b> ruptura del piso; rechazo en un techo fuerte; precio bajo el promedio de 40.</li>
+        <li><b>Salidas:</b> en el rebote se vende cerca del techo y el stop va bajo el piso. En la ruptura el objetivo es la altura del canal y el stop va bajo el techo roto.</li>
+        <li><b>Para entrar</b> también exige las condiciones 2 y 3 del método técnico: que la ganancia posible compense el riesgo y que haya ganado en 2 años.</li>
+      </ul>
+      <p class="tt-note">Adaptación: Cardona opera opciones con gráficos por hora. Aquí se usan datos diarios y se compran acciones, sin opciones ni ventas en corto: una señal PUT significa no entrar o vender. Sus rentabilidades publicitadas (hasta 1000% en SPY) no tienen verificación independiente. Fuentes: <a href="https://www.amazon.com/stores/author/B0BSMK5DDX">página de autor en Amazon</a>, <a href="https://www.slideshare.net/slideshow/seminario-creando-riqueza-metodo-cardona-aprendiendo-a-invertir-en-la-bolsa-de-valores-adap-2025-fash-pptx/284863921">diapositivas del seminario</a>, <a href="https://experienciatopstep.com/vida-de-trader/seminario-creando-riqueza-de-alejandro-cardona/">reseña independiente</a>, <a href="https://www.trustpilot.com/review/seminariocreandoriqueza.com">opiniones en Trustpilot</a>.</p>
+      <p class="tt-note">Solo cuando se cumplen las tres la tarjeta dice ENTRAR. El stop se pone a 2 veces el movimiento diario promedio (ATR) bajo el precio y el objetivo a 3 veces sobre él. Cada operación arriesga como máximo el 1% del capital. Herramienta educativa, no es asesoría financiera.</p>
+    </div>
+  </section>
+
+  <section class="tt-sec" id="posiciones">
+    <h2>Posiciones abiertas</h2>
+    <p class="tt-note" data-empty="posiciones" hidden>Todavía no hay posiciones abiertas. Todo el capital está en efectivo.</p>
+    <div class="tblwrap">
+      <table data-source="posiciones" data-row-key="cartera,ticker">
+        <thead><tr>
+          <th data-field="cartera">Método</th><th data-field="ticker">Acción</th><th data-field="acciones" class="num">Acciones</th><th data-field="costo_prom" class="num">Costo prom.</th>
+          <th data-field="precio" class="num">Precio</th><th data-field="valor" class="num">Valor</th><th data-field="pnl" class="num">Ganancia</th>
+          <th data-field="stop" class="num">Stop</th><th data-field="objetivo" class="num">Objetivo</th>
+        </tr></thead>
+        <tbody data-draw="pos-rows" data-source="posiciones"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="tt-sec" id="operaciones">
+    <h2>Operaciones de la simulación</h2>
+    <p class="tt-note" data-empty="operaciones" hidden>Todavía no hay operaciones. Se registran cada día después del cierre.</p>
+    <div class="tblwrap">
+      <table data-source="operaciones" data-row-key="cartera,n">
+        <thead><tr>
+          <th data-field="cartera">Método</th><th data-field="n" class="num">#</th><th data-field="fecha">Fecha</th><th data-field="tipo">Tipo</th><th data-field="ticker">Acción</th>
+          <th data-field="acciones" class="num">Acciones</th><th data-field="precio" class="num">Precio</th><th data-field="pnl" class="num">Ganancia</th><th data-field="motivo">Motivo</th>
+        </tr></thead>
+        <tbody data-draw="ops-rows" data-source="operaciones"></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+  dash.calc('resumen', {
+    title: 'Acciones para entrar hoy',
+    description: 'Cuenta cuántas acciones dan entrada por cada método.',
+    inputs: ['senales'],
+    fn: (senales) => [{
+      entrar: senales.filter((s) => s.entrar === 'ENTRAR').length,
+      entrar_cd: senales.filter((s) => s.cd_entrar === 'ENTRAR').length,
+      total: senales.length
+    }]
+  });
+
+  const usd = new Intl.NumberFormat('es-EC', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const usd0 = new Intl.NumberFormat('es-EC', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  const num2 = new Intl.NumberFormat('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const sign = (v, s) => (v > 0 ? '+' : v < 0 ? '−' : '') + s;
+  const F = {
+    usd: (v) => usd.format(v),
+    usd0: (v) => usd0.format(v),
+    usds: (v) => sign(v, usd.format(Math.abs(v))),
+    pct: (v) => sign(v, num2.format(Math.abs(v)) + '%'),
+    pts: (v) => sign(v, num2.format(Math.abs(v)) + ' pts'),
+    int: (v) => String(v),
+    text: (v) => String(v)
+  };
+  window.ttFmt = { F, usd, num2, sign };
+
+  dash.draw('num', (el) => {
+    const d = dash.data(el.dataset.source);
+    el.classList.remove('pos', 'neg');
+    if (d.status !== 'ok' || !d.data.length) { el.textContent = '—'; return; }
+    const v = d.data[+el.dataset.row || 0][el.dataset.field];
+    if (v === null || v === undefined) { el.textContent = '—'; return; }
+    const f = el.dataset.fmt || 'text';
+    el.textContent = F[f](v);
+    if (['usds', 'pct', 'pts'].includes(f) && v !== 0) el.classList.add(v > 0 ? 'pos' : 'neg');
+  });
+
+  dash.onData(() => {
+    const r = dash.data('resumen');
+    const n = r.status === 'ok' && r.data.length ? r.data[0].entrar + r.data[0].entrar_cd : null;
+    document.querySelectorAll('[data-take]').forEach((p) => {
+      p.hidden = n === null ? p.dataset.take !== 'cero' : (n === 0 ? p.dataset.take !== 'cero' : p.dataset.take !== 'hay');
+    });
+    document.querySelectorAll('[data-empty]').forEach((p) => {
+      const d = dash.data(p.dataset.empty);
+      p.hidden = !(d.status === 'ok' && d.data.length === 0);
+    });
+  });
+</script>
+
+<script>
+  const { F: fm, usd: U, num2: N2, sign: S } = window.ttFmt;
+
+  function sparkline(box, rows, color, piso, techo) {
+    const w = Math.max(160, box.clientWidth || 300), h = 72, m = { t: 6, r: 4, b: 6, l: 4 };
+    const pts = rows.map((r) => ({ d: new Date(r.fecha), c: r.cierre, s: r.sma40, f: r.fecha }));
+    const x = d3.scaleUtc(d3.extent(pts, (p) => p.d), [m.l, w - m.r]);
+    const vals = pts.flatMap((p) => (p.s == null ? [p.c] : [p.c, p.s])).concat([piso, techo].filter((v) => v != null));
+    const y = d3.scaleLinear(d3.extent(vals), [h - m.b, m.t]).nice();
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${w} ${h}`).attr('height', h).attr('role', 'img');
+    const gid = 'g' + Math.random().toString(36).slice(2);
+    const grad = svg.append('defs').append('linearGradient').attr('id', gid).attr('x1', 0).attr('x2', 0).attr('y1', 0).attr('y2', 1);
+    [[0, .26], [.25, .16], [.5, .08], [.75, .03], [1, 0]].forEach(([o, a]) => grad.append('stop').attr('offset', o).attr('style', `stop-color:${color};stop-opacity:${a}`));
+    svg.append('path').attr('fill', `url(#${gid})`).attr('d', d3.area().x((p) => x(p.d)).y0(h - m.b).y1((p) => y(p.c))(pts));
+    const x0 = x(pts[Math.max(0, pts.length - 20)].d);
+    [[piso, 'var(--color-ok)'], [techo, 'var(--color-bad)']].forEach(([v, col]) => {
+      if (v == null) return;
+      svg.append('line').attr('x1', x0).attr('x2', w - m.r).attr('y1', y(v)).attr('y2', y(v)).attr('stroke', col).attr('stroke-width', 1).attr('opacity', 0.8);
+    });
+    svg.append('path').attr('fill', 'none').attr('stroke', 'var(--cds-chart-reference)').attr('stroke-width', 1.5).attr('stroke-dasharray', '3 3')
+      .attr('d', d3.line().defined((p) => p.s != null).x((p) => x(p.d)).y((p) => y(p.s))(pts));
+    svg.append('path').attr('fill', 'none').attr('stroke', color).attr('stroke-width', 2).attr('stroke-linejoin', 'round').attr('stroke-linecap', 'round')
+      .attr('d', d3.line().x((p) => x(p.d)).y((p) => y(p.c))(pts));
+    const last = pts[pts.length - 1];
+    svg.append('circle').attr('cx', x(last.d)).attr('cy', y(last.c)).attr('r', 3.5).attr('fill', color);
+    const hover = svg.append('circle').attr('r', 3.5).attr('fill', color).attr('opacity', 0);
+    const tip = d3.select(box).append('div').attr('class', 'tip').style('opacity', 0);
+    const fdate = d3.utcFormat('%d/%m/%Y');
+    svg.append('rect').attr('x', 0).attr('y', 0).attr('width', w).attr('height', h).attr('fill', 'transparent')
+      .on('pointermove', (ev) => {
+        const [mx] = d3.pointer(ev);
+        const i = Math.max(0, Math.min(pts.length - 1, d3.bisector((p) => p.d).center(pts, x.invert(mx))));
+        const p = pts[i];
+        hover.attr('cx', x(p.d)).attr('cy', y(p.c)).attr('opacity', 1);
+        tip.style('opacity', 1).selectAll('*').remove();
+        tip.append('div').attr('class', 'k').text(fdate(p.d));
+        tip.append('div').text('Cierre ' + U.format(p.c));
+        if (p.s != null) tip.append('div').text('Prom. 40 días ' + U.format(p.s));
+        const tw = tip.node().offsetWidth, px = (x(p.d) / w) * box.clientWidth;
+        tip.style('left', Math.max(0, Math.min(box.clientWidth - tw, px - tw / 2)) + 'px').style('top', '-58px');
+      })
+      .on('pointerleave', () => { hover.attr('opacity', 0); tip.style('opacity', 0); });
+  }
+
+  dash.draw('cards', (el) => {
+    const s = dash.data('senales'), p = dash.data('precios');
+    el.replaceChildren();
+    if (s.status === 'error' || p.status === 'error') {
+      el.append(Object.assign(document.createElement('div'), { className: 'fail', textContent: 'Failed to load' }));
+      return;
+    }
+    if (s.status !== 'ok' || p.status !== 'ok') { el.textContent = '—'; return; }
+    const byT = d3.group(p.data, (r) => r.ticker);
+    const rows = [...s.data].sort((a, b) => (b.entrar === 'ENTRAR') - (a.entrar === 'ENTRAR') || b.puntaje - a.puntaje);
+    rows.forEach((r) => {
+      const goT = r.entrar === 'ENTRAR', goC = r.cd_entrar === 'ENTRAR';
+      const c = d3.select(el).append('article').attr('class', 'tk' + (goT || goC ? ' go' : '')).attr('id', 'tk-' + r.ticker);
+      const top = c.append('div').attr('class', 'tk-top');
+      const nm = top.append('div').attr('class', 'tk-name');
+      nm.append('span').attr('class', 't').text(r.ticker);
+      nm.append('span').attr('class', 'n').text(r.nombre);
+      const chips = top.append('div').attr('class', 'chips');
+      [['Técnico', goT, r.entrar], ['Cardona', goC, r.cd_entrar]].forEach(([who, go, txt]) => {
+        const ch = chips.append('span').attr('class', 'chip ' + (go ? 'go' : 'no'));
+        ch.append('span').attr('class', 'who').text(who);
+        ch.append('span').text(txt);
+      });
+
+      const px = c.append('div').attr('class', 'tk-px');
+      px.append('span').attr('class', 'p').text(U.format(r.precio));
+      px.append('span').attr('class', 'd ' + (r.var_dia_pct >= 0 ? 'pos' : 'neg')).text('Día ' + fm.pct(r.var_dia_pct));
+      px.append('span').attr('class', 'd ' + (r.var_1m_pct >= 0 ? 'pos' : 'neg')).text('1 mes ' + fm.pct(r.var_1m_pct));
+
+      const sp = c.append('div').attr('class', 'spark').node();
+      const series = (byT.get(r.ticker) || []).slice().sort((a, b) => a.fecha.localeCompare(b.fecha));
+      if (series.length > 1) sparkline(sp, series, goT || goC ? 'var(--color-ok)' : dash.colors[0], r.cd_piso, r.cd_techo);
+
+      const block = (title, status, statusCls) => {
+        const m = c.append('div').attr('class', 'meth');
+        const h = m.append('div').attr('class', 'meth-h');
+        h.append('span').attr('class', 't').text(title);
+        h.append('span').attr('class', 's ' + statusCls).text(status);
+        return m;
+      };
+      const checks = (m, items) => {
+        const ul = m.append('ul').attr('class', 'checks');
+        items.forEach(([ok, txt]) => { const li = ul.append('li'); li.append('span').attr('class', 'm ' + (ok ? 'pos' : 'neg')).text(ok ? '✓' : '✗'); li.append('span').text(txt); });
+      };
+      const scen = (m, n, inv, obj, gan, stop, per) => {
+        if (n == null || !n) return;
+        m.append('div').attr('class', 'tk-foot').text('Si entras hoy: ' + n + ' acciones por ' + U.format(inv));
+        const sc = m.append('div').attr('class', 'scen');
+        const up = sc.append('div').attr('class', 'up');
+        up.append('span').text('Si sube a ' + U.format(obj));
+        up.append('span').attr('class', 'v pos').text(fm.usds(gan));
+        const dn = sc.append('div').attr('class', 'dn');
+        dn.append('span').text('Si cae a ' + U.format(stop));
+        dn.append('span').attr('class', 'v neg').text(fm.usds(per));
+      };
+
+      // Método técnico
+      const mt = block('Método técnico', r.senal, r.senal === 'COMPRAR' ? 'pos' : r.senal === 'ESPERAR' ? '' : 'neg');
+      const g = mt.append('div').attr('class', 'gauge');
+      const gr = g.append('div').attr('class', 'row');
+      gr.append('span').text('Puntaje ' + (r.puntaje > 0 ? '+' : '') + r.puntaje + ' de −5 a +5');
+      gr.append('span').text('RSI ' + Math.round(r.rsi));
+      g.append('div').attr('class', 'bar').append('span').attr('class', 'dot').style('left', ((r.puntaje + 5) / 10 * 100) + '%');
+      checks(mt, [
+        [r.ok_senal, 'Señal COMPRAR (hoy: ' + r.senal + ')'],
+        [r.ok_rr, 'Ganancia posible / pérdida posible ≥ ' + N2.format(r.rr_minimo) + ' (hoy: ' + N2.format(r.rr) + ')'],
+        [r.ok_backtest, 'Ganó en 2 años: ' + r.bt_ops + ' operaciones, ' + Math.round(r.bt_acierto_pct) + '% aciertos, ' + fm.pct(r.bt_prom_pct) + ' promedio']
+      ]);
+      scen(mt, r.acciones, r.inversion, r.objetivo, r.ganancia_neta, r.stop, r.perdida_neta);
+
+      // Método Cardona
+      const mc = block('Método Cardona', (r.cd_sesgo || '—') + ' · ' + (r.cd_setup || '—'), r.cd_sesgo === 'CALL' ? 'pos' : r.cd_sesgo === 'PUT' ? 'neg' : '');
+      if (r.cd_piso != null && r.cd_techo != null) {
+        const lo = Math.min(r.cd_piso, r.precio), hi = Math.max(r.cd_techo, r.precio), span = hi - lo || 1;
+        const pos = (v) => ((v - lo) / span * 100) + '%';
+        const cg = mc.append('div').attr('class', 'gauge');
+        const cr = cg.append('div').attr('class', 'row');
+        cr.append('span').text('Piso ' + U.format(r.cd_piso) + (r.cd_toques_piso >= 2 ? ' · fuerte (' + r.cd_toques_piso + ' toques)' : ''));
+        cr.append('span').text('Techo ' + U.format(r.cd_techo) + (r.cd_toques_techo >= 2 ? ' · fuerte (' + r.cd_toques_techo + ')' : ''));
+        const bar = cg.append('div').attr('class', 'chan');
+        if (r.cd_sma40 != null && r.cd_sma40 >= lo && r.cd_sma40 <= hi) bar.append('span').attr('class', 'tick').style('left', pos(r.cd_sma40));
+        bar.append('span').attr('class', 'dot').style('left', pos(r.precio));
+        const cl = cg.append('div').attr('class', 'row');
+        cl.append('span').text('zona de compra');
+        cl.append('span').text('Prom. 40: ' + (r.cd_sma40 != null ? U.format(r.cd_sma40) : '—'));
+        cl.append('span').text('zona de venta');
+      }
+      checks(mc, [
+        [r.cd_ok_setup, 'Señal CALL (hoy: ' + (r.cd_setup || '—') + ')'],
+        [r.cd_ok_rr, 'Ganancia posible / pérdida posible ≥ ' + N2.format(r.rr_minimo) + (r.cd_rr != null ? ' (hoy: ' + N2.format(r.cd_rr) + ')' : ' (sin señal CALL)')],
+        [r.cd_ok_backtest, 'Ganó en 2 años: ' + r.cd_bt_ops + ' operaciones, ' + Math.round(r.cd_bt_acierto_pct) + '% aciertos, ' + fm.pct(r.cd_bt_prom_pct) + ' promedio']
+      ]);
+      scen(mc, r.cd_acciones, r.cd_inversion, r.cd_objetivo, r.cd_ganancia_neta, r.cd_stop, r.cd_perdida_neta);
+    });
+  });
+
+  dash.draw('carteras', (el) => {
+    const d = dash.data('cartera');
+    el.replaceChildren();
+    if (d.status === 'error') { el.append(Object.assign(document.createElement('div'), { className: 'fail', textContent: 'Failed to load' })); return; }
+    if (d.status !== 'ok') { el.textContent = '—'; return; }
+    d.data.forEach((c) => {
+      const box = d3.select(el).append('div').attr('class', 'cart');
+      box.append('h3').text(c.cartera);
+      const gr = box.append('div').attr('class', 'grid');
+      const cell = (lbl, val, cls, small) => {
+        const x = gr.append('div');
+        x.append('span').attr('class', 'lbl').text(lbl);
+        x.append('span').attr('class', 'big ' + (cls || '')).text(val);
+        if (small) x.append('span').attr('class', 'small').text(small);
+      };
+      const cl = (v) => (v > 0 ? 'pos' : v < 0 ? 'neg' : '');
+      cell('Valor total', U.format(c.valor_total), '', 'Empezó con ' + fm.usd0(c.saldo_inicial));
+      cell('Ganancia o pérdida', fm.usds(c.resultado_usd), cl(c.resultado_usd), fm.pct(c.resultado_pct));
+      cell('Efectivo', U.format(c.efectivo), '', 'Invertido: ' + U.format(c.valor_acciones));
+      cell('Contra comprar y mantener', fm.pts(c.vs_referencia_pct), cl(c.vs_referencia_pct), 'Las 5 desde el 30 oct: ' + fm.pct(c.referencia_pct));
+      box.append('span').attr('class', 'tt-note').text(c.operaciones + ' operaciones' + (c.aciertos_pct != null ? ' · ' + Math.round(c.aciertos_pct) + '% de ventas con ganancia' : ''));
+    });
+  });
+
+  const fillRows = (el, id, cols) => {
+    const d = dash.data(id);
+    el.replaceChildren();
+    if (d.status !== 'ok') return;
+    d.data.forEach((r) => {
+      const tr = el.insertRow();
+      cols.forEach(([k, f, cls]) => {
+        const td = tr.insertCell();
+        if (cls) td.className = cls;
+        const v = r[k];
+        td.textContent = v === null || v === undefined || v === '' ? '—' : (f ? f(v) : String(v));
+        if (k === 'pnl' && typeof v === 'number' && v !== 0) td.classList.add(v > 0 ? 'pos' : 'neg');
+      });
+    });
+  };
+  dash.draw('pos-rows', (el) => fillRows(el, 'posiciones', [
+    ['cartera'], ['ticker'], ['acciones', String, 'num'], ['costo_prom', (v) => U.format(v), 'num'], ['precio', (v) => U.format(v), 'num'],
+    ['valor', (v) => U.format(v), 'num'], ['pnl', fm.usds, 'num'], ['stop', (v) => U.format(v), 'num'], ['objetivo', (v) => U.format(v), 'num']
+  ]));
+  dash.draw('ops-rows', (el) => fillRows(el, 'operaciones', [
+    ['cartera'], ['n', String, 'num'], ['fecha'], ['tipo'], ['ticker'], ['acciones', String, 'num'], ['precio', (v) => U.format(v), 'num'], ['pnl', fm.usds, 'num'], ['motivo']
+  ]));
+</script>

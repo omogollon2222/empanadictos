@@ -14,5 +14,8 @@
   "objetivo_atr": 3.0,
   "dias_max_operacion": 20,
   "historial": "2y",
-  "rr_minimo": 1.4
+  "rr_minimo": 1.4,
+  "cardona_canal_dias": 20,
+  "cardona_toque_pct": 1.5,
+  "cardona_cerca_pct": 3.0
 }

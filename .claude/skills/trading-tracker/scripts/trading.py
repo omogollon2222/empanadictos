@@ -195,7 +195,7 @@ def indicators(rows):
     valid = [m for m in macd if m is not None]
     sig_v = ema(valid, 9)
     signal = [None] * (len(macd) - len(valid)) + sig_v
-    return {"close": c, "sma20": sma(c, 20), "sma50": sma(c, 50), "sma200": sma(c, 200),
+    return {"close": c, "sma20": sma(c, 20), "sma40": sma(c, 40), "sma50": sma(c, 50), "sma200": sma(c, 200),
             "rsi": rsi(c), "macd": macd, "macd_signal": signal, "atr": atr(rows)}
 
 
@@ -249,8 +249,10 @@ def fees(cfg, notional):
 
 
 def trade_plan(cfg, price, a):
-    stop = price - cfg["stop_atr"] * a
-    target = price + cfg["objetivo_atr"] * a
+    return plan_levels(cfg, price, price - cfg["stop_atr"] * a, price + cfg["objetivo_atr"] * a)
+
+
+def plan_levels(cfg, price, stop, target):
     risk_ps = price - stop
     shares = math.floor(cfg["capital_usd"] * cfg["riesgo_por_operacion_pct"] / 100 / risk_ps) if risk_ps > 0 else 0
     shares = min(shares, math.floor(cfg["capital_usd"] / price))
@@ -264,17 +266,78 @@ def trade_plan(cfg, price, a):
             "ratio_rr": (gain / -loss) if loss < 0 else None}
 
 
+# ---------------------------------------------------------- método Cardona
+def cardona_at(cfg, rows, ind, i):
+    """Reglas públicas del método de Alejandro Cardona (Creando Riqueza), en datos diarios:
+    piso (soporte) y techo (resistencia) del canal de las últimas N sesiones, 'fuerte' si se
+    tocó 2+ veces; setups CALL: ruptura del techo, rebote en piso fuerte, cruce del promedio
+    de 40; setups PUT: ruptura del piso, rechazo en techo fuerte, bajo el promedio de 40."""
+    n = cfg.get("cardona_canal_dias", 20)
+    band = cfg.get("cardona_toque_pct", 1.5) / 100
+    cerca = cfg.get("cardona_cerca_pct", 3.0) / 100
+    if i < max(n, 41) or ind["sma40"][i] is None or ind["atr"][i] is None:
+        return None
+    prev = rows[i - n:i]
+    techo, piso = max(r["high"] for r in prev), min(r["low"] for r in prev)
+    tt = sum(1 for r in prev if r["high"] >= techo * (1 - band))
+    tp = sum(1 for r in prev if r["low"] <= piso * (1 + band))
+    c, pc, s40, a = rows[i]["close"], rows[i - 1]["close"], ind["sma40"][i], ind["atr"][i]
+    cruce = any(rows[j - 1]["close"] <= ind["sma40"][j - 1] and rows[j]["close"] > ind["sma40"][j]
+                for j in range(i - 2, i + 1) if ind["sma40"][j - 1] is not None)
+    altura = techo - piso
+    out = {"piso": piso, "techo": techo, "toques_piso": tp, "toques_techo": tt, "sma40": s40,
+           "piso_fuerte": tp >= 2, "techo_fuerte": tt >= 2, "stop": None, "objetivo": None}
+    if c > techo and c > s40:
+        out.update(setup="RUPTURA DEL TECHO", sesgo="CALL", stop=techo - a, objetivo=c + altura)
+    elif piso <= c <= piso * (1 + cerca) and tp >= 2 and c > pc:
+        out.update(setup="REBOTE EN PISO FUERTE", sesgo="CALL", stop=piso * 0.99, objetivo=techo * 0.99)
+    elif cruce and c > s40:
+        out.update(setup="CRUCE DEL PROMEDIO 40", sesgo="CALL", stop=s40 - a, objetivo=max(techo, c + 2 * a))
+    elif c < piso:
+        out.update(setup="RUPTURA DEL PISO", sesgo="PUT")
+    elif c >= techo * (1 - cerca) and tt >= 2 and c < pc:
+        out.update(setup="RECHAZO EN TECHO FUERTE", sesgo="PUT")
+    elif c < s40:
+        out.update(setup="BAJO EL PROMEDIO 40", sesgo="PUT")
+    else:
+        out.update(setup="DENTRO DEL CANAL", sesgo="NEUTRAL")
+    if out["sesgo"] == "CALL" and not (out["stop"] < c < out["objetivo"]):
+        out.update(sesgo="NEUTRAL", setup=out["setup"] + " (sin espacio)", stop=None, objetivo=None)
+    return out
+
+
 # --------------------------------------------------------------- backtest
 def backtest(cfg, rows, ind):
-    """Simula: compra cuando el puntaje >= 3; sale en stop, objetivo o tras N días."""
-    trades, i, n = [], 0, len(rows)
-    while i < n - 1:
+    """Método técnico: compra cuando el puntaje >= 3; stop/objetivo por ATR."""
+    def entry(i, op):
         s, _ = score_at(ind, i)
         if s is None or s < 3:
+            return None
+        a = ind["atr"][i]
+        return op - cfg["stop_atr"] * a, op + cfg["objetivo_atr"] * a
+    return run_backtest(cfg, rows, entry)
+
+
+def backtest_cardona(cfg, rows, ind):
+    """Método Cardona: compra en setups CALL; stop y objetivo en piso/techo."""
+    def entry(i, op):
+        cd = cardona_at(cfg, rows, ind, i)
+        if not cd or cd["sesgo"] != "CALL" or not (cd["stop"] < op < cd["objetivo"]):
+            return None
+        return cd["stop"], cd["objetivo"]
+    return run_backtest(cfg, rows, entry)
+
+
+def run_backtest(cfg, rows, entry_fn):
+    """Entra al abrir del día siguiente a la señal; sale en stop, objetivo o tras N días."""
+    trades, i, n = [], 0, len(rows)
+    while i < n - 1:
+        lv = entry_fn(i, rows[i + 1]["open"])
+        if lv is None:
             i += 1
             continue
-        entry, a = rows[i + 1]["open"], ind["atr"][i]
-        stop, tgt = entry - cfg["stop_atr"] * a, entry + cfg["objetivo_atr"] * a
+        entry = rows[i + 1]["open"]
+        stop, tgt = lv
         exit_p, j = None, i + 1
         while j < n and j <= i + cfg["dias_max_operacion"]:
             r = rows[j]
@@ -313,6 +376,12 @@ def analyze(cfg, ticker, rows):
            "backtest": backtest(cfg, rows, ind)}
     if ind["atr"][i]:
         out["plan"] = trade_plan(cfg, last, ind["atr"][i])
+    cd = cardona_at(cfg, rows, ind, i)
+    if cd:
+        cd["backtest"] = backtest_cardona(cfg, rows, ind)
+        if cd["sesgo"] == "CALL":
+            cd["plan"] = plan_levels(cfg, last, cd["stop"], cd["objetivo"])
+        out["cardona"] = cd
     return out
 
 
@@ -450,7 +519,14 @@ def cmd_diario(args, cfg):
 
 
 # -------------------------------------------------------------- simulador
-SIM_PATH = os.path.join(BASE, "simulacion", "estado.json")
+SIM_DIR = os.path.join(BASE, "simulacion")
+SIM_PATH = os.path.join(SIM_DIR, "tecnico.json")
+CARTERAS = {"tecnico": "Método técnico", "cardona": "Método Cardona"}
+
+
+def sim_use(name):
+    global SIM_PATH
+    SIM_PATH = os.path.join(SIM_DIR, f"{name}.json")
 
 
 def sim_load():
@@ -606,6 +682,7 @@ def sim_estado(args, cfg):
 
 
 def sim_cmd(args, cfg):
+    sim_use(args.cartera)
     if args.accion == "iniciar":
         sim_iniciar(args, cfg)
     elif args.accion in ("comprar", "vender"):
@@ -623,6 +700,16 @@ def decision(cfg, r):
     return c1, c2, c3
 
 
+def decision_cardona(cfg, cd):
+    if not cd:
+        return False, False, False
+    p, b = cd.get("plan") or {}, cd.get("backtest") or {}
+    c1 = cd["sesgo"] == "CALL"
+    c2 = (p.get("ratio_rr") or 0) >= cfg.get("rr_minimo", 1.4)
+    c3 = (b.get("promedio_pct") or -1) > 0 and b.get("operaciones", 0) > 0
+    return c1, c2, c3
+
+
 def cmd_tablero(args, cfg):
     """Exporta JSON para el tablero: senales, precios, cartera, posiciones, operaciones."""
     out = args.out
@@ -635,6 +722,7 @@ def cmd_tablero(args, cfg):
         ind = indicators(rows)
         for i in range(max(0, len(rows) - 120), len(rows)):
             precios.append({"ticker": t, "fecha": rows[i]["date"], "cierre": round(rows[i]["close"], 2),
+                            "sma40": None if ind["sma40"][i] is None else round(ind["sma40"][i], 2),
                             "sma50": None if ind["sma50"][i] is None else round(ind["sma50"][i], 2)})
         c1, c2, c3 = decision(cfg, r)
         p, b = r.get("plan") or {}, r.get("backtest") or {}
@@ -651,22 +739,40 @@ def cmd_tablero(args, cfg):
             "perdida_neta": round(p.get("perdida_neta_stop", 0), 2), "rr": round(p.get("ratio_rr") or 0, 2),
             "bt_ops": b.get("operaciones", 0), "bt_acierto_pct": round(b.get("tasa_acierto", 0), 1),
             "bt_prom_pct": round(b.get("promedio_pct", 0), 2), "razones": "; ".join(r["razones"])})
-    st = json.load(open(SIM_PATH, encoding="utf-8")) if os.path.exists(SIM_PATH) else None
+        cd = r.get("cardona") or {}
+        k1, k2, k3 = decision_cardona(cfg, cd)
+        kp, kb = cd.get("plan") or {}, cd.get("backtest") or {}
+        rd = lambda v: None if v is None else round(v, 2)
+        senales[-1].update({
+            "cd_setup": cd.get("setup"), "cd_sesgo": cd.get("sesgo"),
+            "cd_entrar": "ENTRAR" if (k1 and k2 and k3) else "NO ENTRAR",
+            "cd_ok_setup": k1, "cd_ok_rr": k2, "cd_ok_backtest": k3,
+            "cd_piso": rd(cd.get("piso")), "cd_techo": rd(cd.get("techo")), "cd_sma40": rd(cd.get("sma40")),
+            "cd_toques_piso": cd.get("toques_piso"), "cd_toques_techo": cd.get("toques_techo"),
+            "cd_acciones": kp.get("acciones"), "cd_inversion": rd(kp.get("inversion")),
+            "cd_stop": rd(kp.get("stop")), "cd_objetivo": rd(kp.get("objetivo")),
+            "cd_ganancia_neta": rd(kp.get("ganancia_neta_objetivo")), "cd_perdida_neta": rd(kp.get("perdida_neta_stop")),
+            "cd_rr": rd(kp.get("ratio_rr")), "cd_bt_ops": kb.get("operaciones", 0),
+            "cd_bt_acierto_pct": round(kb.get("tasa_acierto", 0), 1), "cd_bt_prom_pct": round(kb.get("promedio_pct", 0), 2)})
     cartera, posiciones, ops = [], [], []
-    if st:
+    for cname, ctitle in CARTERAS.items():
+        path = os.path.join(SIM_DIR, f"{cname}.json")
+        if not os.path.exists(path):
+            continue
+        st = json.load(open(path, encoding="utf-8"))
         val = 0.0
         for t, p in st["posiciones"].items():
             px = last.get(t) or 0
             avg = p["costo_total"] / p["acciones"]
             val += p["acciones"] * px
-            posiciones.append({"ticker": t, "acciones": p["acciones"], "costo_prom": round(avg, 2), "precio": round(px, 2),
+            posiciones.append({"cartera": ctitle, "ticker": t, "acciones": p["acciones"], "costo_prom": round(avg, 2), "precio": round(px, 2),
                                "valor": round(p["acciones"] * px, 2), "pnl": round(p["acciones"] * px - p["costo_total"], 2),
                                "stop": p.get("stop"), "objetivo": p.get("objetivo")})
         total = st["efectivo"] + val
         ref = st.get("referencia_inicio") or {}
         bench = (sum(last[t] / ref[t] - 1 for t in ref if t in last) / len(ref) * 100) if ref else 0
         cerradas = [o for o in st["operaciones"] if o.get("pnl") is not None]
-        cartera.append({"saldo_inicial": st["saldo_inicial"], "efectivo": round(st["efectivo"], 2),
+        cartera.append({"cartera": ctitle, "saldo_inicial": st["saldo_inicial"], "efectivo": round(st["efectivo"], 2),
                         "valor_acciones": round(val, 2), "valor_total": round(total, 2),
                         "resultado_usd": round(total - st["saldo_inicial"], 2),
                         "resultado_pct": round((total / st["saldo_inicial"] - 1) * 100, 2),
@@ -676,7 +782,7 @@ def cmd_tablero(args, cfg):
                         "aciertos_pct": round(sum(1 for o in cerradas if o["pnl"] > 0) / len(cerradas) * 100, 1) if cerradas else None,
                         "fecha_precios": senales[0]["fecha"], "inicio": st["inicio"], "fin": st.get("fin")})
         for k, o in enumerate(st["operaciones"]):
-            ops.append({"n": k + 1, "fecha": o.get("fecha_precio") or o["fecha"], "tipo": o["tipo"], "ticker": o["ticker"],
+            ops.append({"cartera": ctitle, "n": k + 1, "fecha": o.get("fecha_precio") or o["fecha"], "tipo": o["tipo"], "ticker": o["ticker"],
                         "acciones": o["acciones"], "precio": o["precio"], "comision": o["comision"],
                         "pnl": o.get("pnl"), "motivo": o.get("motivo", "")})
     for name, data in (("senales", senales), ("precios", precios), ("cartera", cartera),
@@ -711,6 +817,7 @@ def main():
     dl = sp.add_parser("descargar", help="guarda datos reales en datos/ (lo usa GitHub Actions)")
     dl.add_argument("--tickers", nargs="+")
     sm = sp.add_parser("sim", help="cartera simulada (paper trading)")
+    sm.add_argument("--cartera", default="tecnico", choices=list(CARTERAS))
     ss = sm.add_subparsers(dest="accion", required=True)
     a = ss.add_parser("iniciar")
     a.add_argument("--saldo", type=float, default=5000)

@@ -1,0 +1,77 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cartera de Buffett</title>
+<style>
+:root{--surface:#fcfcfb;--plane:#f9f9f7;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--grid:#e1e0d9;--base:#c3c2b7;--up:#2a78d6;--down:#e34948;--s1:#2a78d6;--s2:#0b0b0b;--s3:#898781;--pop:#fff;--ring:rgba(11,11,11,.10)}
+@media (prefers-color-scheme:dark){:root{--surface:#1a1a19;--plane:#0d0d0d;--ink:#f0efec;--ink2:#c3c2b7;--grid:#2c2c2a;--base:#383835;--up:#3987e5;--down:#e66767;--s1:#3987e5;--s2:#f0efec;--s3:#898781;--pop:#262624;--ring:rgba(255,255,255,.10);color-scheme:dark}}
+body{margin:0;background:var(--plane);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
+.wrap{max-width:860px;margin:0 auto;padding:24px max(16px,env(safe-area-inset-left));display:flex;flex-direction:column;gap:16px}
+h1{font-size:22px;margin:0;font-weight:600}h2{font-size:16px;margin:0 0 2px;font-weight:600}
+.sub{color:var(--ink2);margin:0}
+.card{background:var(--surface);border:1px solid var(--ring);border-radius:10px;padding:16px;position:relative}
+.note{color:var(--ink2);font-size:12px;margin:4px 0 8px}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--ink2);margin:0 0 6px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+svg text{fill:var(--ink2);font-size:12px}svg .tk{fill:var(--ink);font-size:13px;font-weight:600}svg .val{fill:var(--ink)}
+.tip{position:absolute;pointer-events:none;background:var(--pop);border:1px solid var(--ring);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);padding:8px 10px;font-size:12px;opacity:0;white-space:nowrap}
+.tip .k{color:var(--ink2)}
+</style></head><body><div class="wrap">
+<h1>Cartera de Warren Buffett (Berkshire Hathaway)</h1>
+<p class="sub">Las 10 mayores posiciones del último reporte público (13F al 30 de junio de 2026, el 90% de la cartera) y cómo se han movido desde entonces con precios reales al cierre del 30 de octubre.</p>
+<div class="card" id="c1">
+<h2>Cambio de cada posición desde el 30 de junio</h2>
+<p class="note">Ordenadas por su peso en la cartera. Pasa el cursor para ver el detalle.</p>
+<svg id="bars" width="100%" role="img" aria-label="Cambio porcentual de cada posición desde el 30 de junio"></svg>
+<div class="tip" id="t1"></div>
+</div>
+<div class="card" id="c2">
+<h2>Cartera, Berkshire y S&amp;P 500 desde el 30 de junio</h2>
+<p class="note">Base 100 al 30 de junio. Pasa el cursor sobre el gráfico para ver cada fecha.</p>
+<div class="legend" id="lg"></div>
+<svg id="line" width="100%" role="img" aria-label="Evolución base 100"></svg>
+<div class="tip" id="t2"></div>
+</div>
+<p class="note">Fuentes: reporte 13F de Berkshire (agregadores sentisense, 13f.chat, Motley Fool) y precios de Yahoo Finance. Alphabet suma las clases A y C. No incluye efectivo ni empresas no cotizadas de Berkshire. No es asesoría financiera.</p>
+</div>
+<script>
+const D={"hold": [{"t": "AAPL", "n": "Apple", "w": 22.0, "p": 19.1, "m1": 3.49, "precio": 344.63, "ytd": 26.77}, {"t": "AXP", "n": "American Express", "w": 17.1, "p": -5.66, "m1": 4.94, "precio": 319.11, "ytd": -13.74}, {"t": "KO", "n": "Coca-Cola", "w": 10.9, "p": 15.76, "m1": 9.29, "precio": 94.08, "ytd": 34.57}, {"t": "GOOGL", "n": "Alphabet (A+C)", "w": 12.6, "p": -21.69, "m1": -18.67, "precio": 279.84, "ytd": -10.59}, {"t": "BAC", "n": "Bank of America", "w": 9.2, "p": -12.23, "m1": -8.12, "precio": 50.01, "ytd": -9.07}, {"t": "CVX", "n": "Chevron", "w": 4.7, "p": 42.08, "m1": 15.33, "precio": 235.52, "ytd": 54.53}, {"t": "OXY", "n": "Occidental", "w": 4.3, "p": 31.77, "m1": 15.69, "precio": 64.0, "ytd": 55.64}, {"t": "CB", "n": "Chubb", "w": 3.9, "p": 6.86, "m1": 11.95, "precio": 364.12, "ytd": 16.66}, {"t": "MCO", "n": "Moody's", "w": 3.7, "p": 9.05, "m1": 8.76, "precio": 493.91, "ytd": -3.32}, {"t": "DAL", "n": "Delta Air Lines", "w": 1.9, "p": -14.42, "m1": -3.97, "precio": 80.15, "ytd": 15.49}], "lines": {"dates": ["2026-06-30", "2026-07-01", "2026-07-02", "2026-07-06", "2026-07-07", "2026-07-08", "2026-07-09", "2026-07-10", "2026-07-13", "2026-07-14", "2026-07-15", "2026-07-16", "2026-07-17", "2026-07-20", "2026-07-21", "2026-07-22", "2026-07-23", "2026-07-24", "2026-07-27", "2026-07-28", "2026-07-29", "2026-07-30", "2026-07-31", "2026-08-03", "2026-08-04", "2026-08-05", "2026-08-06", "2026-08-07", "2026-08-10", "2026-08-11", "2026-08-12", "2026-08-13", "2026-08-14", "2026-08-17", "2026-08-18", "2026-08-19", "2026-08-20", "2026-08-21", "2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27", "2026-08-28", "2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-08", "2026-09-09", "2026-09-10", "2026-09-11", "2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18", "2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24", "2026-09-25", "2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02", "2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09", "2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15", "2026-10-16", "2026-10-19", "2026-10-20", "2026-10-21", "2026-10-22", "2026-10-23", "2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30"], "series": [{"k": "cart", "n": "Cartera (10 mayores, ponderada)", "v": [100.0, 101.57, 103.95, 104.75, 104.85, 103.79, 104.32, 104.7, 105.49, 105.45, 107.13, 107.78, 106.84, 106.25, 106.29, 105.9, 103.93, 104.57, 105.73, 106.99, 106.75, 106.49, 105.34, 105.85, 106.56, 106.15, 105.89, 105.68, 105.82, 105.17, 105.2, 105.61, 105.75, 105.08, 106.19, 106.92, 105.73, 106.06, 106.55, 106.09, 105.98, 105.45, 106.46, 105.64, 105.85, 106.41, 107.26, 105.74, 105.3, 104.75, 105.62, 106.82, 107.11, 106.75, 105.02, 105.59, 105.51, 105.62, 104.87, 104.02, 104.35, 104.99, 104.12, 102.9, 102.96, 102.64, 103.05, 103.39, 103.63, 103.7, 105.04, 105.04, 106.19, 106.18, 105.79, 106.35, 106.7, 106.65, 106.45, 106.86, 107.56, 106.34, 106.01, 105.81, 106.14, 105.81, 105.28]}, {"k": "brk", "n": "Acci\u00f3n de Berkshire (BRK-B)", "v": [100.0, 99.87, 101.48, 101.24, 100.72, 98.88, 99.01, 98.67, 99.29, 98.14, 97.59, 98.55, 98.11, 98.17, 97.85, 97.8, 98.09, 98.91, 99.36, 102.39, 101.75, 101.86, 102.23, 102.55, 103.36, 103.69, 104.84, 104.28, 105.8, 103.2, 101.92, 101.31, 100.73, 99.57, 100.51, 99.85, 99.29, 99.09, 100.79, 100.79, 100.9, 100.66, 100.92, 100.73, 100.39, 100.97, 101.55, 101.13, 101.09, 101.27, 101.32, 101.99, 102.91, 103.27, 103.88, 101.76, 101.87, 100.32, 100.62, 101.35, 100.96, 101.02, 100.54, 100.39, 99.51, 100.02, 100.45, 100.77, 101.03, 101.17, 102.13, 103.04, 103.44, 104.04, 105.19, 105.05, 106.32, 106.36, 107.88, 107.71, 109.31, 108.35, 109.63, 108.51, 107.98, 108.31, 108.41]}, {"k": "spy", "n": "S&P 500 (SPY)", "v": [100.0, 99.86, 99.73, 100.6, 100.13, 99.82, 100.66, 101.1, 100.32, 100.68, 101.08, 100.53, 99.53, 99.37, 100.2, 100.09, 98.85, 98.95, 98.97, 99.21, 97.68, 99.32, 100.03, 101.46, 103.29, 103.08, 102.92, 103.55, 103.52, 103.19, 103.44, 104.17, 103.96, 103.47, 102.77, 102.98, 102.12, 102.54, 102.24, 102.56, 102.59, 103.26, 103.02, 102.72, 102.01, 102.46, 103.54, 103.14, 102.57, 102.09, 101.48, 102.35, 101.89, 101.42, 100.97, 102.12, 102.0, 103.58, 103.56, 102.82, 102.73, 103.29, 102.52, 102.33, 102.12, 102.31, 103.06, 103.76, 104.33, 104.08, 103.64, 104.26, 104.2, 104.18, 103.06, 103.35, 102.21, 102.64, 102.98, 103.52, 102.3, 101.77, 102.49, 103.07, 103.42, 103.03, 101.2]}]}};const NS='http://www.w3.org/2000/svg';
+const el=(p,n,a)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);p.appendChild(e);return e};
+const fp=v=>(v>0?'+':v<0?'−':'')+Math.abs(v).toFixed(1).replace('.',',')+'%';
+const fu=v=>'$'+v.toLocaleString('es-EC',{minimumFractionDigits:2,maximumFractionDigits:2});
+const css=k=>getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+function tipAt(tip,card,ev,rows){tip.replaceChildren();rows.forEach(([k,v],i)=>{const d=document.createElement('div');if(i===0){d.style.fontWeight=600;d.textContent=k}else{const s=document.createElement('span');s.className='k';s.textContent=k+': ';d.append(s,v)}tip.append(d)});
+ const r=card.getBoundingClientRect();tip.style.opacity=1;let x=ev.clientX-r.left+12;if(x+tip.offsetWidth>r.width-4)x=ev.clientX-r.left-tip.offsetWidth-12;tip.style.left=Math.max(4,x)+'px';tip.style.top=(ev.clientY-r.top+12)+'px'}
+function bars(){const svg=document.getElementById('bars');svg.innerHTML='';const W=Math.max(320,svg.clientWidth||800),nar=W<520;
+ const L=nar?118:170,R=nar?58:70,row=34,T=6,B=26,H=T+row*D.hold.length+B;svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.setAttribute('height',H);
+ const lo=Math.min(0,...D.hold.map(d=>d.p)),hi=Math.max(0,...D.hold.map(d=>d.p)),st=nar?20:10,x0=Math.floor(lo/st)*st,x1=Math.ceil(hi/st)*st,x=v=>L+(v-x0)/(x1-x0)*(W-L-R);
+ for(let v=x0;v<=x1;v+=st){el(svg,'line',{x1:x(v),x2:x(v),y1:T,y2:T+row*D.hold.length,stroke:v===0?css('--base'):css('--grid'),'stroke-width':v===0?1.5:1});if(nar&&v%40!==0)continue;const t=el(svg,'text',{x:x(v),y:H-8,'text-anchor':'middle'});t.textContent=(v>0?'+':v<0?'−':'')+Math.abs(v)+'%'}
+ D.hold.forEach((d,i)=>{const cy=T+row*i+row/2,col=d.p<0?css('--down'):css('--up');
+  const a=el(svg,'text',{x:0,y:cy-1,class:'tk'});a.textContent=nar?d.t:d.n;const b=el(svg,'text',{x:0,y:cy+13});b.textContent=String(d.w).replace('.',',')+'% de la cartera';
+  const bx=Math.min(x(0),x(d.p)),bw=Math.max(1,Math.abs(x(d.p)-x(0))),h=14,r=Math.min(4,bw/2),y=cy-h/2;
+  const pth=d.p<0?`M${bx+bw},${y}H${bx+r}Q${bx},${y} ${bx},${y+r}V${y+h-r}Q${bx},${y+h} ${bx+r},${y+h}H${bx+bw}Z`:`M${bx},${y}H${bx+bw-r}Q${bx+bw},${y} ${bx+bw},${y+r}V${y+h-r}Q${bx+bw},${y+h} ${bx+bw-r},${y+h}H${bx}Z`;
+  el(svg,'path',{d:pth,fill:col});const v=el(svg,'text',{x:W-R+8,y:cy+4,class:'val'});v.textContent=fp(d.p);
+  const hit=el(svg,'rect',{x:0,y:cy-row/2,width:W,height:row,fill:'transparent'});
+  hit.addEventListener('pointermove',ev=>tipAt(document.getElementById('t1'),document.getElementById('c1'),ev,[[d.n+' ('+d.t+')'],['Peso en la cartera',String(d.w).replace('.',',')+'%'],['Precio 30 oct',fu(d.precio)],['Desde 30 jun',fp(d.p)],['Último mes',fp(d.m1)],['En 2026',fp(d.ytd)]]));
+  hit.addEventListener('pointerleave',()=>document.getElementById('t1').style.opacity=0)})}
+function line(){const svg=document.getElementById('line');svg.innerHTML='';const W=Math.max(320,svg.clientWidth||800),nar=W<520;
+ const S=D.lines.series,dates=D.lines.dates.map(s=>new Date(s+'T12:00:00Z')),cols=[css('--s1'),css('--s2'),css('--s3')];
+ const L=36,R=nar?54:64,T=10,B=26,H=nar?220:280;svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.setAttribute('height',H);
+ const all=S.flatMap(s=>s.v),lo=Math.floor(Math.min(...all)/2)*2,hi=Math.ceil(Math.max(...all)/2)*2;
+ const x=i=>L+i/(dates.length-1)*(W-L-R),y=v=>T+(hi-v)/(hi-lo)*(H-T-B);
+ for(let v=lo;v<=hi;v+=2){el(svg,'line',{x1:L,x2:W-R,y1:y(v),y2:y(v),stroke:v===100?css('--base'):css('--grid'),'stroke-width':v===100?1.5:1});const t=el(svg,'text',{x:L-6,y:y(v)+4,'text-anchor':'end'});t.textContent=v}
+ const mf=new Intl.DateTimeFormat('es-EC',{month:'short',timeZone:'UTC'});let pm=-1;dates.forEach((d,i)=>{if(d.getUTCMonth()!==pm){pm=d.getUTCMonth();if(i>0){const t=el(svg,'text',{x:x(i),y:H-8,'text-anchor':'middle'});t.textContent=mf.format(d)}}});
+ const lg=document.getElementById('lg');lg.replaceChildren();
+ S.forEach((s,k)=>{let p='';s.v.forEach((v,i)=>{if(v!=null)p+=(p?'L':'M')+x(i)+','+y(v)});el(svg,'path',{d:p,fill:'none',stroke:cols[k],'stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'});
+  const lv=s.v[s.v.length-1];el(svg,'circle',{cx:x(s.v.length-1),cy:y(lv),r:4,fill:cols[k],stroke:css('--surface'),'stroke-width':2});
+  const sp=document.createElement('span');const sw=document.createElement('i');sw.style.cssText=`width:14px;height:3px;border-radius:2px;background:${cols[k]};display:inline-block`;sp.append(sw,s.n);lg.append(sp)});
+ const ends=S.map((s,k)=>({k,y:y(s.v[s.v.length-1]),v:s.v[s.v.length-1]})).sort((a,b)=>a.y-b.y);for(let i=1;i<ends.length;i++)if(ends[i].y-ends[i-1].y<14)ends[i].y=ends[i-1].y+14;
+ ends.forEach(e=>{const t=el(svg,'text',{x:W-R+8,y:e.y+4,class:'val'});t.textContent=fp(e.v-100)});
+ const rule=el(svg,'line',{y1:T,y2:H-B,stroke:css('--base'),'stroke-width':1,opacity:0});
+ const dots=S.map((s,k)=>el(svg,'circle',{r:4,fill:cols[k],stroke:css('--surface'),'stroke-width':2,opacity:0}));
+ const df=new Intl.DateTimeFormat('es-EC',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
+ const hit=el(svg,'rect',{x:L,y:T,width:W-L-R,height:H-T-B,fill:'transparent'});
+ hit.addEventListener('pointermove',ev=>{const r=svg.getBoundingClientRect(),mx=(ev.clientX-r.left)/r.width*W,i=Math.max(0,Math.min(dates.length-1,Math.round((mx-L)/(W-L-R)*(dates.length-1))));
+  rule.setAttribute('x1',x(i));rule.setAttribute('x2',x(i));rule.setAttribute('opacity',1);S.forEach((s,k)=>{dots[k].setAttribute('cx',x(i));dots[k].setAttribute('cy',y(s.v[i]));dots[k].setAttribute('opacity',1)});
+  tipAt(document.getElementById('t2'),document.getElementById('c2'),ev,[[df.format(dates[i])],...S.map(s=>[s.n,fp(s.v[i]-100)])])});
+ hit.addEventListener('pointerleave',()=>{document.getElementById('t2').style.opacity=0;rule.setAttribute('opacity',0);dots.forEach(d=>d.setAttribute('opacity',0))})}
+function all(){bars();line()}all();addEventListener('resize',all);
+</script></body></html>

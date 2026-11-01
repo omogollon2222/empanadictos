@@ -1,0 +1,96 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cierre del viernes 30 de octubre</title>
+<style>
+:root{--surface:#fcfcfb;--plane:#f9f9f7;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--grid:#e1e0d9;--base:#c3c2b7;--up:#2a78d6;--down:#e34948;--range:#898781;--pop:#fff;--ring:rgba(11,11,11,.10)}
+@media (prefers-color-scheme:dark){:root{--surface:#1a1a19;--plane:#0d0d0d;--ink:#f0efec;--ink2:#c3c2b7;--muted:#898781;--grid:#2c2c2a;--base:#383835;--up:#3987e5;--down:#e66767;--pop:#262624;--ring:rgba(255,255,255,.10);color-scheme:dark}}
+body{margin:0;background:var(--plane);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
+.wrap{max-width:860px;margin:0 auto;padding:24px max(16px,env(safe-area-inset-left))}
+h1{font-size:22px;margin:0 0 4px;font-weight:600}
+.sub{color:var(--ink2);margin:0 0 16px}
+.card{background:var(--surface);border:1px solid var(--ring);border-radius:10px;padding:16px;position:relative}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--ink2);margin:0 0 8px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:12px;height:12px;border-radius:3px;display:inline-block}
+svg text{fill:var(--ink2);font-size:12px}
+svg .tk{fill:var(--ink);font-weight:600;font-size:13px}
+svg .val{fill:var(--ink);font-size:12px}
+.tip{position:absolute;pointer-events:none;background:var(--pop);border:1px solid var(--ring);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);padding:8px 10px;font-size:12px;opacity:0;transition:opacity .1s;white-space:nowrap}
+.tip b{display:block;margin-bottom:2px}
+.tip .k{color:var(--ink2)}
+.note{color:var(--ink2);font-size:12px;margin:12px 0 0}
+table{border-collapse:collapse;width:100%;font-size:12px;margin-top:16px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--grid);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--ink2);font-weight:500}
+.tbl{overflow-x:auto}
+.neg{color:var(--down)}.pos{color:var(--up)}
+</style></head><body><div class="wrap">
+<h1>Cierre del viernes 30 de octubre de 2026</h1>
+<p class="sub">Las 5 acciones cerraron a la baja. NVIDIA fue la que más cayó; Tesla, la que menos. (El sábado 31 la bolsa no abre, así que este es el último cierre.)</p>
+<div class="card" id="card">
+<div class="legend">
+<span><i class="sw" style="background:var(--down)"></i>Cambio al cierre (baja)</span>
+<span><i class="sw" style="background:var(--up)"></i>Cambio al cierre (sube)</span>
+<span><svg width="26" height="12"><line x1="1" y1="6" x2="25" y2="6" stroke="var(--range)" stroke-width="2" stroke-linecap="round"/></svg>Rango del día (mínimo a máximo)</span>
+<span><svg width="10" height="14"><line x1="5" y1="1" x2="5" y2="13" stroke="var(--ink)" stroke-width="2"/></svg>Apertura</span>
+</div>
+<svg id="ch" width="100%" role="img" aria-label="Cambio porcentual de cada acción el 30 de octubre frente al cierre del 29"></svg>
+<div class="tip" id="tip"></div>
+<p class="note">Todo se mide en % frente al cierre del jueves 29. Pasa el cursor sobre una acción para ver el detalle. Datos reales de Yahoo Finance.</p>
+</div>
+<div class="tbl"><table><thead><tr><th>Acción</th><th>Cierre jue 29</th><th>Apertura</th><th>Máximo</th><th>Mínimo</th><th>Cierre vie 30</th><th>Cambio</th><th>Volumen vs día anterior</th></tr></thead><tbody id="tb"></tbody></table></div>
+</div>
+<script>
+const D=[{"t": "AAPL", "n": "Apple", "fecha": "2026-10-30", "prev": 348.9100036621094, "o": 346.7200012207031, "h": 349.19000244140625, "l": 334.3500061035156, "c": 344.6300048828125, "v": 67797500.0, "vprev": 42582100.0}, {"t": "TSLA", "n": "Tesla", "fecha": "2026-10-30", "prev": 403.29998779296875, "o": 393.2200012207031, "h": 404.2200012207031, "l": 387.5199890136719, "c": 399.80999755859375, "v": 41644400.0, "vprev": 22858300.0}, {"t": "CARR", "n": "Carrier", "fecha": "2026-10-30", "prev": 55.540000915527344, "o": 54.709999084472656, "h": 55.279998779296875, "l": 52.959999084472656, "c": 53.630001068115234, "v": 9822200.0, "vprev": 10948600.0}, {"t": "META", "n": "Meta", "fecha": "2026-10-30", "prev": 624.52001953125, "o": 614.510009765625, "h": 626.3699951171875, "l": 610.1300048828125, "c": 614.989990234375, "v": 25295900.0, "vprev": 31276200.0}, {"t": "NVDA", "n": "NVIDIA", "fecha": "2026-10-30", "prev": 213.66000366210938, "o": 208.94000244140625, "h": 209.05999755859375, "l": 200.9199981689453, "c": 204.63999938964844, "v": 168039400.0, "vprev": 77568100.0}];
+const pct=(v,b)=>(v/b-1)*100;
+const fp=v=>(v>0?'+':v<0?'−':'')+Math.abs(v).toFixed(2).replace('.',',')+'%';
+const fu=v=>'$'+v.toLocaleString('es-EC',{minimumFractionDigits:2,maximumFractionDigits:2});
+D.forEach(d=>{d.pc=pct(d.c,d.prev);d.po=pct(d.o,d.prev);d.ph=pct(d.h,d.prev);d.pl=pct(d.l,d.prev)});
+D.sort((a,b)=>a.pc-b.pc);
+const svg=document.getElementById('ch'),tip=document.getElementById('tip'),card=document.getElementById('card');
+const NS='http://www.w3.org/2000/svg';
+const el=(n,a,p)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);(p||svg).appendChild(e);return e};
+function draw(){
+ svg.innerHTML='';
+ const W=Math.max(320,svg.clientWidth||800),narrow=W<520;
+ const L=narrow?64:92,R=narrow?92:130,T=10,row=50,B=34,H=T+row*D.length+B;
+ svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.setAttribute('height',H);
+ const lo=Math.min(-1,...D.map(d=>d.pl)),hi=Math.max(1,...D.map(d=>d.ph));
+ const step=narrow?2:1,x0=Math.floor(lo/step)*step,x1=Math.ceil(hi/step)*step;
+ const x=v=>L+(v-x0)/(x1-x0)*(W-L-R);
+ for(let v=x0;v<=x1+1e-9;v+=step){
+  el('line',{x1:x(v),x2:x(v),y1:T,y2:T+row*D.length,stroke:v===0?'var(--base)':'var(--grid)','stroke-width':v===0?1.5:1});
+  const t=el('text',{x:x(v),y:H-12,'text-anchor':'middle'});t.textContent=(v>0?'+':v<0?'−':'')+Math.abs(v)+'%';
+ }
+ D.forEach((d,i)=>{
+  const cy=T+row*i+row/2,col=d.pc<0?'var(--down)':'var(--up)';
+  const g=el('g',{});
+  const tk=el('text',{x:8,y:cy-2,class:'tk'},g);tk.textContent=d.t;
+  const nm=el('text',{x:8,y:cy+13},g);nm.textContent=d.n;
+  // bar 0 -> close%
+  const bx=Math.min(x(0),x(d.pc)),bw=Math.abs(x(d.pc)-x(0)),bh=14,r=4;
+  const left=d.pc<0;
+  const p=left?`M${bx+bw},${cy-bh/2}H${bx+r}Q${bx},${cy-bh/2} ${bx},${cy-bh/2+r}V${cy+bh/2-r}Q${bx},${cy+bh/2} ${bx+r},${cy+bh/2}H${bx+bw}Z`
+              :`M${bx},${cy-bh/2}H${bx+bw-r}Q${bx+bw},${cy-bh/2} ${bx+bw},${cy-bh/2+r}V${cy+bh/2-r}Q${bx+bw},${cy+bh/2} ${bx+bw-r},${cy+bh/2}H${bx}Z`;
+  el('path',{d:p,fill:col,opacity:.9},g);
+  // range whisker
+  el('line',{x1:x(d.pl),x2:x(d.ph),y1:cy+14,y2:cy+14,stroke:'var(--range)','stroke-width':2,'stroke-linecap':'round'},g);
+  el('line',{x1:x(d.po),x2:x(d.po),y1:cy+8,y2:cy+20,stroke:'var(--ink)','stroke-width':2},g);
+  el('circle',{cx:x(d.pc),cy:cy+14,r:4,fill:col,stroke:'var(--surface)','stroke-width':2},g);
+  const v=el('text',{x:W-R+10,y:cy-2,class:'val'},g);v.textContent=fu(d.c);
+  const v2=el('text',{x:W-R+10,y:cy+13,fill:col},g);v2.textContent=fp(d.pc);v2.style.fill=col;
+  const hit=el('rect',{x:0,y:cy-row/2,width:W,height:row,fill:'transparent'},g);
+  hit.addEventListener('pointermove',ev=>{
+   tip.innerHTML='';const b=document.createElement('b');b.textContent=d.n+' ('+d.t+')';tip.appendChild(b);
+   [['Cierre jue 29',fu(d.prev)],['Apertura',fu(d.o)+' ('+fp(d.po)+')'],['Máximo',fu(d.h)+' ('+fp(d.ph)+')'],['Mínimo',fu(d.l)+' ('+fp(d.pl)+')'],['Cierre vie 30',fu(d.c)+' ('+fp(d.pc)+')'],['Volumen',(d.v/1e6).toFixed(1).replace('.',',')+' M']].forEach(([k,val])=>{
+     const r=document.createElement('div');const s=document.createElement('span');s.className='k';s.textContent=k+': ';r.appendChild(s);r.appendChild(document.createTextNode(val));tip.appendChild(r)});
+   const cr=card.getBoundingClientRect();let lx=ev.clientX-cr.left+12,ly=ev.clientY-cr.top+12;
+   tip.style.opacity=1;const tw=tip.offsetWidth;if(lx+tw>cr.width-4)lx=ev.clientX-cr.left-tw-12;tip.style.left=Math.max(4,lx)+'px';tip.style.top=ly+'px';
+  });
+  hit.addEventListener('pointerleave',()=>tip.style.opacity=0);
+ });
+}
+draw();addEventListener('resize',draw);
+const tb=document.getElementById('tb');
+D.forEach(d=>{const tr=tb.insertRow();[d.n+' ('+d.t+')',fu(d.prev),fu(d.o),fu(d.h),fu(d.l),fu(d.c),fp(d.pc),fp(pct(d.v,d.vprev))].forEach((v,i)=>{const td=tr.insertCell();td.textContent=v;if(i===6)td.className=d.pc<0?'neg':'pos'})});
+</script></body></html>

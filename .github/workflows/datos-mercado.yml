@@ -33,7 +33,10 @@ jobs:
         with:
           python-version: "3.12"
       - name: Descargar precios reales
-        run: python3 .claude/skills/trading-tracker/scripts/trading.py descargar
+        run: |
+          python3 .claude/skills/trading-tracker/scripts/trading.py descargar
+          EXTRA=.claude/skills/trading-tracker/datos/extra_tickers.txt
+          if [ -f "$EXTRA" ]; then python3 .claude/skills/trading-tracker/scripts/trading.py descargar --tickers $(cat "$EXTRA"); fi
       - name: Guardar en el repositorio
         run: |
           git config user.name "github-actions[bot]"

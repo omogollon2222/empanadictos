@@ -2,21 +2,8 @@
   "inicio": "2026-10-31 23:31",
   "fin": "2026-11-06",
   "saldo_inicial": 5000.0,
-  "efectivo": 2515.8,
-  "posiciones": {
-    "META": {
-      "acciones": 2.0,
-      "costo_total": 1243.06,
-      "stop": 600.35,
-      "objetivo": 763.56
-    },
-    "NVDA": {
-      "acciones": 6.0,
-      "costo_total": 1241.1399999999999,
-      "stop": 198.91,
-      "objetivo": 240.94
-    }
-  },
+  "efectivo": 4974.58,
+  "posiciones": {},
   "operaciones": [
     {
       "fecha": "2026-11-03 21:25",
@@ -39,6 +26,28 @@
       "comision": 1.0,
       "pnl": null,
       "motivo": "Cardona: rebote en piso fuerte (piso 200.92, techo 243.37), R:R 4.18"
+    },
+    {
+      "fecha": "2026-11-04 21:24",
+      "fecha_precio": "manual",
+      "tipo": "venta",
+      "ticker": "NVDA",
+      "acciones": 6.0,
+      "precio": 200.13,
+      "comision": 1.0,
+      "pnl": -41.36,
+      "motivo": "Cardona: señal PUT, ruptura del piso (200.92)"
+    },
+    {
+      "fecha": "2026-11-04 21:24",
+      "fecha_precio": "manual",
+      "tipo": "venta",
+      "ticker": "META",
+      "acciones": 2.0,
+      "precio": 630.0,
+      "comision": 1.0,
+      "pnl": 15.94,
+      "motivo": "Cardona: señal PUT, bajo el promedio 40 (aún sin recuperarlo)"
     }
   ],
   "referencia_inicio": {
@@ -68,6 +77,14 @@
     {
       "fecha": "2026-11-03 21:25",
       "valor": 4998.0
+    },
+    {
+      "fecha": "2026-11-04 21:24",
+      "valor": 4976.58
+    },
+    {
+      "fecha": "2026-11-04 21:24",
+      "valor": 4974.58
     }
   ]
 }
